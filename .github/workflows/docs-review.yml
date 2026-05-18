@@ -1,0 +1,145 @@
+name: Docs Review
+
+# ─────────────────────────────────────────────────────────────────
+# Trigger: запускается только когда на PR навешивают лейбл docs-review
+# ─────────────────────────────────────────────────────────────────
+on:
+  pull_request:
+    types: [labeled]
+
+# Одновременно может выполняться только один запуск на PR
+concurrency:
+  group: docs-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  docs-review:
+    # Запускаем только если добавлен именно нужный лейбл
+    if: github.event.label.name == 'docs-review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── 1. Получаем код ───────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # нужна история для diff
+
+      # ── 2. Python ────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python deps
+        run: |
+          pip install openai requests
+
+      # ── 3. Vale ──────────────────────────────────────────────────
+      - name: Install Vale
+        uses: errata-ai/vale-action@v2
+        with:
+          install-only: true
+
+      - name: Sync Vale packages (Microsoft, proselint)
+        run: vale sync
+
+      # ── 4. Определяем изменённые файлы ───────────────────────────
+      - name: Get changed docs files
+        id: changed-files
+        run: |
+          # Берём только .mdx из docs/ru/ и docs/en/ (исключаем tutorial-*)
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep -E '^docs/(ru|en)/.+\.mdx$' \
+            || true)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No eligible docs files changed."
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed files:"
+            echo "$CHANGED"
+            # Сохраняем в файл для следующих шагов
+            echo "$CHANGED" > /tmp/changed_files.txt
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 5. Если нет подходящих файлов — выходим ──────────────────
+      - name: Skip if no docs changed
+        if: steps.changed-files.outputs.has_files == 'false'
+        run: |
+          echo "No docs/ru or docs/en .mdx files changed. Skipping review."
+
+      # ── 6. Vale lint ─────────────────────────────────────────────
+      - name: Run Vale
+        if: steps.changed-files.outputs.has_files == 'true'
+        id: vale
+        run: |
+          # Запускаем Vale на каждом изменённом файле, выводим JSON
+          FILES=$(cat /tmp/changed_files.txt | tr '\n' ' ')
+          vale --output=JSON --config=.vale.ini $FILES > /tmp/vale_output.json 2>/dev/null || true
+
+          echo "Vale output:"
+          cat /tmp/vale_output.json | python3 -m json.tool 2>/dev/null | head -80 || cat /tmp/vale_output.json
+
+      # ── 7. Health-check MCP-сервера ───────────────────────────────
+      - name: MCP server health check
+        if: steps.changed-files.outputs.has_files == 'true'
+        id: mcp-health
+        env:
+          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+        run: |
+          MAX_RETRIES=3
+          RETRY_DELAY=10
+          STATUS="unavailable"
+
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Health check attempt $i/$MAX_RETRIES..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $MCP_API_KEY" \
+              --max-time 10 \
+              "$MCP_SERVER_URL/health" || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "MCP server is healthy."
+              STATUS="ok"
+              break
+            else
+              echo "Got HTTP $HTTP_CODE, retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            fi
+          done
+
+          echo "mcp_status=$STATUS" >> "$GITHUB_OUTPUT"
+
+          if [ "$STATUS" != "ok" ]; then
+            echo "::warning::MCP server unavailable after $MAX_RETRIES attempts. Agent will use local style guide fallback."
+          fi
+
+      # ── 8. LLM review agent ───────────────────────────────────────
+      - name: Run LLM review agent
+        if: steps.changed-files.outputs.has_files == 'true'
+        env:
+          # LLM-настройки (OpenAI-совместимый API)
+          LLM_API_KEY:   ${{ secrets.LLM_API_KEY }}    # API-ключ (обязательно)
+          LLM_BASE_URL:  ${{ vars.LLM_BASE_URL }}      # кастомный эндпоинт (если задан)
+          LLM_MODEL:     ${{ vars.LLM_MODEL }}          # имя модели (если задано)
+          # MCP + GitHub
+          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
+          MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
+          MCP_STATUS:     ${{ steps.mcp-health.outputs.mcp_status }}
+          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:      ${{ github.event.pull_request.number }}
+          REPO:           ${{ github.repository }}
+          BASE_REF:       ${{ github.base_ref }}
+        run: |
+          python3 .github/scripts/review-agent.py \
+            --changed-files /tmp/changed_files.txt \
+            --vale-output /tmp/vale_output.json
