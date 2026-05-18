@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Развёртывание Docusaurus: от локального проекта до GitHub Pages</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #1a1a2e;
+      background: #f8f9fb;
+    }
+
+    /* ── Layout ── */
+    .layout { display: flex; min-height: 100vh; }
+
+    nav {
+      width: 260px;
+      flex-shrink: 0;
+      background: #1e293b;
+      color: #cbd5e1;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 24px 0;
+    }
+
+    nav .nav-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: #64748b;
+      padding: 0 20px 12px;
+    }
+
+    nav a {
+      display: block;
+      padding: 7px 20px;
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 13.5px;
+      border-left: 3px solid transparent;
+      transition: all .15s;
+    }
+    nav a:hover { color: #e2e8f0; background: rgba(255,255,255,.05); }
+    nav a.active { color: #38bdf8; border-left-color: #38bdf8; background: rgba(56,189,248,.08); }
+    nav .nav-section { margin-top: 20px; }
+
+    main {
+      flex: 1;
+      max-width: 860px;
+      padding: 48px 56px;
+    }
+
+    /* ── Typography ── */
+    h1 { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+    .subtitle { color: #64748b; font-size: 1rem; margin-bottom: 40px; }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 48px 0 16px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e2e8f0;
+      scroll-margin-top: 24px;
+    }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #334155;
+      margin: 24px 0 8px;
+    }
+
+    p { margin-bottom: 12px; color: #334155; }
+    ul, ol { padding-left: 20px; margin-bottom: 12px; color: #334155; }
+    li { margin-bottom: 4px; }
+
+    /* ── Code ── */
+    pre {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 12px 0 20px;
+    }
+    code {
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    }
+    p code, li code {
+      background: #e8edf5;
+      color: #2d7dd2;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+
+    /* Syntax highlight helpers */
+    .cm { color: #64748b; } /* comment */
+    .kw { color: #93c5fd; } /* keyword */
+    .st { color: #86efac; } /* string */
+    .fn { color: #fde68a; } /* function / key */
+    .nm { color: #f9a8d4; } /* name */
+    .op { color: #94a3b8; } /* operator */
+
+    /* ── Callouts ── */
+    .callout {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      display: flex;
+      gap: 10px;
+      font-size: 14px;
+    }
+    .callout-icon { flex-shrink: 0; font-size: 16px; line-height: 1.5; }
+    .callout-body { flex: 1; }
+    .callout-body strong { display: block; margin-bottom: 3px; }
+
+    .callout-warn  { background: #fffbeb; border-left: 4px solid #f59e0b; }
+    .callout-warn .callout-icon { color: #f59e0b; }
+    .callout-warn .callout-body strong { color: #92400e; }
+    .callout-warn .callout-body { color: #78350f; }
+
+    .callout-tip   { background: #f0fdf4; border-left: 4px solid #22c55e; }
+    .callout-tip .callout-icon { color: #22c55e; }
+    .callout-tip .callout-body strong { color: #14532d; }
+    .callout-tip .callout-body { color: #166534; }
+
+    .callout-info  { background: #eff6ff; border-left: 4px solid #3b82f6; }
+    .callout-info .callout-icon { color: #3b82f6; }
+    .callout-info .callout-body strong { color: #1e3a8a; }
+    .callout-info .callout-body { color: #1e40af; }
+
+    .callout-error { background: #fff1f2; border-left: 4px solid #ef4444; }
+    .callout-error .callout-icon { color: #ef4444; }
+    .callout-error .callout-body strong { color: #7f1d1d; }
+    .callout-error .callout-body { color: #991b1b; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px; }
+    th { background: #f1f5f9; text-align: left; padding: 10px 14px; font-weight: 600; color: #334155; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; color: #475569; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+
+    /* ── File tree ── */
+    .tree {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: 2;
+      color: #334155;
+      margin: 12px 0 20px;
+    }
+    .tree .dir { color: #2d7dd2; font-weight: 600; }
+    .tree .new { color: #16a34a; }
+    .tree .changed { color: #d97706; }
+
+    /* ── Step badges ── */
+    .steps { counter-reset: step-counter; margin: 0; padding: 0; list-style: none; }
+    .steps li {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      counter-increment: step-counter;
+    }
+    .steps li::before {
+      content: counter(step-counter);
+      flex-shrink: 0;
+      width: 28px; height: 28px;
+      background: #2d7dd2;
+      color: white;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 13px;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: 2px;
+    }
+    .steps li .step-body { flex: 1; }
+    .steps li .step-body strong { display: block; margin-bottom: 4px; color: #0f172a; }
+
+    /* ── Section divider ── */
+    .section { margin-bottom: 8px; }
+
+    /* ── Component table ── */
+    .comp-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 12px 0 20px;
+    }
+    .comp-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .comp-card .comp-name { font-weight: 700; font-size: 13px; color: #2d7dd2; margin-bottom: 4px; font-family: monospace; }
+    .comp-card .comp-desc { font-size: 13px; color: #64748b; }
+
+    /* ── Footer ── */
+    footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── Sidebar nav ── -->
+  <nav>
+    <div class="nav-title">Содержание</div>
+
+    <div class="nav-section">
+      <a href="#overview">Обзор проекта</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-title" style="margin-top:8px">Шаги</div>
+      <a href="#s1">1. Создание проекта</a>
+      <a href="#s2">2. Конфигурация сайта</a>
+      <a href="#s3">3. Структура документов</a>
+      <a href="#s4">4. Сайдбар</a>
+      <a href="#s5">5. Стили и цвета</a>
+      <a href="#s6">6. MDX-компоненты</a>
+      <a href="#s7">7. Домашняя страница</a>
+      <a href="#s8">8. GitHub Pages</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-title" style="margin-top:8px">Справка</div>
+      <a href="#troubleshooting">Типичные ошибки</a>
+      <a href="#structure">Итоговая структура</a>
+    </div>
+  </nav>
+
+  <!-- ── Main content ── -->
+  <main>
+
+    <h1>Docusaurus: от локального проекта до GitHub Pages</h1>
+    <p class="subtitle">Миграция документации с Mintlify на Docusaurus и деплой на GitHub Pages</p>
+
+    <!-- ── Overview ── -->
+    <section id="overview" class="section">
+      <h2>Обзор проекта</h2>
+      <p>Исходные данные: документация проекта <strong>Doc Reviewer</strong> в репозитории Mintlify на GitHub. Цель — развернуть её на Docusaurus локально, затем опубликовать на GitHub Pages.</p>
+
+      <table>
+        <tr><th>Параметр</th><th>Значение</th></tr>
+        <tr><td>Исходный репозиторий</td><td><code>amihailov76/mintlify-docs</code></td></tr>
+        <tr><td>Целевой репозиторий</td><td><code>amihailov76/docuz-test</code></td></tr>
+        <tr><td>Опубликованный сайт</td><td><code>https://amihailov76.github.io/docuz-test/</code></td></tr>
+        <tr><td>Языки</td><td>English (<code>docs/en/</code>) + Русский (<code>docs/ru/</code>)</td></tr>
+        <tr><td>Цвет бренда</td><td><code>#2D7DD2</code></td></tr>
+      </table>
+    </section>
+
+    <!-- ── Step 1 ── -->
+    <section id="s1" class="section">
+      <h2>1. Создание Docusaurus-проекта</h2>
+
+      <h3>Команды</h3>
+      <pre><code><span class="cm"># Создать проект (выбрать JavaScript при подсказке)</span>
+npx create-docusaurus@latest my-docs classic
+cd my-docs
+
+<span class="cm"># Запустить локально</span>
+npm start</code></pre>
+
+      <p>После старта сайт доступен на <code>http://localhost:3000</code>. Docusaurus поддерживает hot reload.</p>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">⚠️</span>
+        <div class="callout-body">
+          <strong>Требования</strong>
+          Node.js v18 или новее. Проверьте: <code>node -v</code>. Версии ниже 18 не поддерживаются Docusaurus v3.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 2 ── -->
+    <section id="s2" class="section">
+      <h2>2. Конфигурация сайта</h2>
+
+      <p>Файл <code>docusaurus.config.js</code> — главный конфигурационный файл. Ниже ключевые настройки с пояснениями.</p>
+
+      <h3>Для локальной разработки</h3>
+      <pre><code><span class="kw">const</span> config = {
+  title: <span class="st">'Doc Reviewer'</span>,
+  url:     <span class="st">'http://localhost:3000'</span>,
+  baseUrl: <span class="st">'/'</span>,
+  onBrokenLinks: <span class="st">'warn'</span>,      <span class="cm">// не прерывать сборку — удобно при миграции</span>
+  onBrokenMarkdownLinks: <span class="st">'warn'</span>,
+  <span class="cm">// ...</span>
+};</code></pre>
+
+      <h3>Для GitHub Pages</h3>
+      <pre><code><span class="kw">const</span> config = {
+  url:              <span class="st">'https://amihailov76.github.io'</span>,
+  baseUrl:          <span class="st">'/docuz-test/'</span>,   <span class="cm">// имя репозитория</span>
+  organizationName: <span class="st">'amihailov76'</span>,
+  projectName:      <span class="st">'docuz-test'</span>,
+  trailingSlash:    <span class="kw">false</span>,
+  <span class="cm">// ...</span>
+};</code></pre>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">⚠️</span>
+        <div class="callout-body">
+          <strong>Сложное место: baseUrl и внутренние ссылки</strong>
+          Когда <code>baseUrl</code> не равен <code>/</code>, все внутренние ссылки и редиректы нужно строить через <code>useBaseUrl()</code>, иначе пути будут битыми на деплое.
+        </div>
+      </div>
+
+      <h3>Навбар: два языковых раздела вместо табов Mintlify</h3>
+      <pre><code>navbar: {
+  items: [
+    { type: <span class="st">'docSidebar'</span>, sidebarId: <span class="st">'enSidebar'</span>, label: <span class="st">'English'</span>  },
+    { type: <span class="st">'docSidebar'</span>, sidebarId: <span class="st">'ruSidebar'</span>, label: <span class="st">'Русский'</span>  },
+    { href: <span class="st">'https://github.com/amihailov76/doc-reviewer'</span>, label: <span class="st">'GitHub'</span>, position: <span class="st">'right'</span> },
+  ]
+}</code></pre>
+    </section>
+
+    <!-- ── Step 3 ── -->
+    <section id="s3" class="section">
+      <h2>3. Перенос документов</h2>
+
+      <p>Mintlify и Docusaurus оба используют MDX, поэтому сами <code>.mdx</code>-файлы переносятся без изменений. Нужно только правильно разместить папки.</p>
+
+      <ol class="steps">
+        <li><div class="step-body"><strong>Клонировать исходный репозиторий</strong><br>
+          <code>git clone https://github.com/amihailov76/mintlify-docs</code>
+        </div></li>
+        <li><div class="step-body"><strong>Скопировать папки с контентом</strong><br>
+          Перенести <code>en/</code> и <code>ru/</code> из Mintlify-репо в папку <code>docs/</code> Docusaurus-проекта.
+        </div></li>
+        <li><div class="step-body"><strong>Удалить дефолтный контент</strong><br>
+          Удалить из <code>docs/</code> папки <code>tutorial-basics/</code>, <code>tutorial-extras/</code> и файл <code>intro.md</code> — они созданы Docusaurus при инициализации и больше не нужны.
+        </div></li>
+      </ol>
+
+      <div class="callout callout-info">
+        <span class="callout-icon">ℹ️</span>
+        <div class="callout-body">
+          <strong>Mintlify-компоненты не сломают сборку сразу</strong>
+          Если в MDX-файлах есть компоненты вроде <code>&lt;Card&gt;</code> или <code>&lt;Steps&gt;</code>, сборка не упадёт — Docusaurus просто не знает, что с ними делать. Но при рендере страниц появятся ошибки вида <em>Expected component X to be defined</em>. Решение — шаг 6.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 4 ── -->
+    <section id="s4" class="section">
+      <h2>4. Настройка сайдбара</h2>
+
+      <p>Mintlify хранит навигацию в <code>docs.json</code> (секция <code>navigation.tabs</code>). В Docusaurus это <code>sidebars.js</code> с именованными сайдбарами — по одному на каждый язык.</p>
+
+      <pre><code><span class="cm">// sidebars.js</span>
+<span class="kw">const</span> sidebars = {
+  enSidebar: [
+    { type: <span class="st">'category'</span>, label: <span class="st">'Get Started'</span>, collapsed: <span class="kw">false</span>,
+      items: [<span class="st">'en/introduction'</span>, <span class="st">'en/installation'</span>, <span class="st">'en/quickstart'</span>] },
+    { type: <span class="st">'category'</span>, label: <span class="st">'Core Concepts'</span>,
+      items: [<span class="st">'en/concepts/projects'</span>, <span class="st">'en/concepts/documents'</span>,
+              <span class="st">'en/concepts/evaluation'</span>, <span class="st">'en/concepts/criteria'</span>] },
+    <span class="cm">// ... Workflows, Configuration, Troubleshooting</span>
+  ],
+  ruSidebar: [
+    <span class="cm">// зеркальная структура для ru/</span>
+  ],
+};
+module.exports = sidebars;</code></pre>
+
+      <div class="callout callout-tip">
+        <span class="callout-icon">💡</span>
+        <div class="callout-body">
+          <strong>Альтернатива ручному сайдбару</strong>
+          Для быстрого старта можно использовать автогенерацию: <code>{ type: 'autogenerated', dirName: 'en' }</code>. Docusaurus построит сайдбар из структуры папок. Но порядок страниц придётся регулировать числовыми префиксами в именах файлов (<code>01-introduction.mdx</code>).
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 5 ── -->
+    <section id="s5" class="section">
+      <h2>5. Стили и фирменные цвета</h2>
+
+      <p>Цвета из <code>docs.json</code> Mintlify переносятся в CSS-переменные Docusaurus. Файл: <code>src/css/custom.css</code>.</p>
+
+      <pre><code><span class="cm">/* Светлая тема */</span>
+:root {
+  --ifm-color-primary:          <span class="st">#2D7DD2</span>;
+  --ifm-color-primary-dark:     <span class="st">#2570C4</span>;
+  --ifm-color-primary-darker:   <span class="st">#2169BA</span>;
+  --ifm-color-primary-darkest:  <span class="st">#1A549A</span>;
+  --ifm-color-primary-light:    <span class="st">#3F8ADA</span>;
+  --ifm-color-primary-lighter:  <span class="st">#4892DE</span>;
+  --ifm-color-primary-lightest: <span class="st">#68A8E8</span>;
+}
+
+<span class="cm">/* Тёмная тема */</span>
+[data-theme=<span class="st">'dark'</span>] {
+  --ifm-color-primary: <span class="st">#5EA8F0</span>;
+  <span class="cm">/* ... более светлые оттенки для читаемости */</span>
+}</code></pre>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">⚠️</span>
+        <div class="callout-body">
+          <strong>Docusaurus требует семь оттенков</strong>
+          Нельзя указать только один цвет — нужны все семь вариантов (<code>primary</code>, <code>dark</code>, <code>darker</code>, <code>darkest</code>, <code>light</code>, <code>lighter</code>, <code>lightest</code>). Используйте <a href="https://docusaurus.io/docs/styling-layout#styling-your-site-with-infima" target="_blank">генератор палитры Infima</a>.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 6 ── -->
+    <section id="s6" class="section">
+      <h2>6. Замена Mintlify-компонентов</h2>
+
+      <p>Docusaurus позволяет зарегистрировать любые JSX-компоненты глобально через файл <code>src/theme/MDXComponents.js</code>. Все компоненты, найденные в репозитории:</p>
+
+      <div class="comp-grid">
+        <div class="comp-card">
+          <div class="comp-name">&lt;Card&gt; / &lt;CardGroup&gt;</div>
+          <div class="comp-desc">Карточки в CSS-сетке. Поддерживают prop <code>href</code> для кликабельных карточек и <code>icon</code> для эмодзи.</div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-name">&lt;Steps&gt; / &lt;Step&gt;</div>
+          <div class="comp-desc">Нумерованные шаги с вертикальной линией. Нумерация автоматическая через <code>React.Children</code>.</div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-name">&lt;Note&gt; / &lt;Tip&gt; / &lt;Warning&gt; / &lt;Info&gt;</div>
+          <div class="comp-desc">Информационные блоки. Используют классы Docusaurus <code>alert</code> — совместимы со светлой и тёмной темами.</div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-name">&lt;CodeGroup&gt;</div>
+          <div class="comp-desc">Кодовые блоки с вкладками. Метка вкладки берётся из metastring: <code>```text OpenAI</code>.</div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-name">&lt;Tabs&gt; / &lt;Tab&gt;</div>
+          <div class="comp-desc">Контентные вкладки для произвольного MDX. Метка — из prop <code>title</code>.</div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-name">&lt;Accordion&gt; / &lt;AccordionGroup&gt;</div>
+          <div class="comp-desc">HTML <code>&lt;details&gt;/&lt;summary&gt;</code> со стилизованной стрелкой и слитыми рамками.</div>
+        </div>
+      </div>
+
+      <pre><code><span class="cm">// src/theme/MDXComponents.js</span>
+<span class="kw">import</span> MDXComponents <span class="kw">from</span> <span class="st">'@theme-original/MDXComponents'</span>;
+<span class="kw">import</span> DocTabs <span class="kw">from</span> <span class="st">'@theme/Tabs'</span>;       <span class="cm">// переименовать, чтобы не конфликтовать!</span>
+<span class="kw">import</span> DocTabItem <span class="kw">from</span> <span class="st">'@theme/TabItem'</span>;
+
+<span class="cm">// ... определения компонентов ...</span>
+
+<span class="kw">export default</span> {
+  ...MDXComponents,   <span class="cm">// сохранить стандартные компоненты Docusaurus</span>
+  Card, CardGroup, Steps, Step,
+  Note, Tip, Warning, Info,
+  CodeGroup, Tabs, Tab,
+  Accordion, AccordionGroup,
+};</code></pre>
+
+      <div class="callout callout-error">
+        <span class="callout-icon">🔴</span>
+        <div class="callout-body">
+          <strong>Конфликт имён: Tabs</strong>
+          Mintlify использует компонент <code>&lt;Tabs&gt;</code>, и Docusaurus тоже экспортирует <code>Tabs</code> из <code>@theme/Tabs</code>. Если импортировать оба под одним именем — конфликт. Решение: импортировать Docusaurus-вкладки как <code>DocTabs</code> и использовать это имя внутри компонентов.
+        </div>
+      </div>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">⚠️</span>
+        <div class="callout-body">
+          <strong>alert--info отсутствует в Docusaurus</strong>
+          Стандартные классы Docusaurus: <code>alert--secondary</code>, <code>alert--success</code>, <code>alert--warning</code>. Класса <code>alert--info</code> нет — его нужно добавить вручную в <code>custom.css</code>.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 7 ── -->
+    <section id="s7" class="section">
+      <h2>7. Домашняя страница → редирект</h2>
+
+      <p>По умолчанию Docusaurus показывает лендинг (<code>src/pages/index.js</code>). Чтобы сразу открывалась нужная страница документации — заменить содержимое на редирект.</p>
+
+      <pre><code><span class="cm">// src/pages/index.js</span>
+<span class="kw">import</span> useBaseUrl <span class="kw">from</span> <span class="st">'@docusaurus/useBaseUrl'</span>;
+<span class="kw">import</span> { Redirect } <span class="kw">from</span> <span class="st">'@docusaurus/router'</span>;
+
+<span class="kw">export default function</span> <span class="fn">Home</span>() {
+  <span class="kw">return</span> &lt;<span class="nm">Redirect</span> to={useBaseUrl(<span class="st">'/docs/ru/introduction'</span>)} /&gt;;
+}</code></pre>
+
+      <div class="callout callout-error">
+        <span class="callout-icon">🔴</span>
+        <div class="callout-body">
+          <strong>Самая частая ошибка: пропущен useBaseUrl</strong>
+          <code>&lt;Redirect to="/docs/ru/introduction" /&gt;</code> работает локально (baseUrl = <code>/</code>), но ломается на GitHub Pages (baseUrl = <code>/docuz-test/</code>). Путь без <code>useBaseUrl</code> игнорирует baseUrl и ведёт на несуществующий адрес. Всегда оборачивайте путь в <code>useBaseUrl()</code>.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Step 8 ── -->
+    <section id="s8" class="section">
+      <h2>8. Деплой на GitHub Pages</h2>
+
+      <ol class="steps">
+        <li><div class="step-body"><strong>Инициализировать git и связать репозиторий</strong>
+          <pre><code>git init
+git add .
+git commit -m <span class="st">"initial commit"</span>
+git branch -M main
+git remote add origin https://github.com/amihailov76/docuz-test.git
+git push -u origin main</code></pre>
+        </div></li>
+
+        <li><div class="step-body"><strong>Создать GitHub Actions workflow</strong><br>
+          Файл должен находиться строго по пути <code>.github/workflows/deploy.yml</code>.
+          <pre><code>name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build</code></pre>
+        </div></li>
+
+        <li><div class="step-body"><strong>Включить права на запись для GitHub Actions</strong><br>
+          Settings → Actions → General → Workflow permissions → <strong>Read and write permissions</strong> → Save.
+        </div></li>
+
+        <li><div class="step-body"><strong>Настроить GitHub Pages</strong><br>
+          Settings → Pages → Source: <strong>Deploy from a branch</strong> → Branch: <code>gh-pages</code>, folder: <code>/ (root)</code> → Save.
+        </div></li>
+
+        <li><div class="step-body"><strong>Запушить и дождаться деплоя</strong><br>
+          После пуша в <code>main</code> Actions создаёт ветку <code>gh-pages</code> и деплоит сайт. Прогресс — во вкладке Actions репозитория. Сайт появляется через 1–2 минуты.
+        </div></li>
+      </ol>
+
+      <div class="callout callout-error">
+        <span class="callout-icon">🔴</span>
+        <div class="callout-body">
+          <strong>Частая ошибка: deploy.yml в .git\ вместо .github\</strong>
+          Папка <code>.git\</code> — служебная папка Git, она никогда не попадает в репозиторий. Правильный путь: <code>.github\workflows\deploy.yml</code> (папка <code>.github</code> рядом с <code>src\</code>, <code>docs\</code>, <code>package.json</code>).
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Troubleshooting ── -->
+    <section id="troubleshooting" class="section">
+      <h2>Типичные ошибки и решения</h2>
+
+      <table>
+        <tr>
+          <th>Ошибка</th>
+          <th>Причина</th>
+          <th>Решение</th>
+        </tr>
+        <tr>
+          <td><em>Expected component X to be defined</em></td>
+          <td>Mintlify-компонент не зарегистрирован в Docusaurus</td>
+          <td>Добавить компонент в <code>src/theme/MDXComponents.js</code></td>
+        </tr>
+        <tr>
+          <td>Редирект ведёт на 404</td>
+          <td><code>baseUrl</code> не учтён в пути редиректа</td>
+          <td>Использовать <code>useBaseUrl('/docs/...')</code></td>
+        </tr>
+        <tr>
+          <td>Ветка <code>gh-pages</code> не создаётся</td>
+          <td>Нет прав на запись у <code>GITHUB_TOKEN</code></td>
+          <td>Settings → Actions → Workflow permissions → Read and write</td>
+        </tr>
+        <tr>
+          <td>GitHub Pages показывает 404</td>
+          <td>Страница GitHub Pages указывает не на ту ветку</td>
+          <td>Settings → Pages → Branch: <code>gh-pages</code></td>
+        </tr>
+        <tr>
+          <td>Конфликт имён <code>Tabs</code></td>
+          <td>Mintlify <code>Tabs</code> и Docusaurus <code>Tabs</code> — разные компоненты</td>
+          <td>Импортировать Docusaurus-вариант как <code>DocTabs</code></td>
+        </tr>
+        <tr>
+          <td>Сломанные внутренние ссылки на GitHub Pages</td>
+          <td><code>baseUrl</code> не подставляется в ссылки</td>
+          <td>Использовать относительные ссылки или <code>useBaseUrl()</code></td>
+        </tr>
+        <tr>
+          <td><code>deploy.yml</code> не попадает в репозиторий</td>
+          <td>Файл помещён в <code>.git\</code> вместо <code>.github\</code></td>
+          <td>Переместить в <code>.github\workflows\deploy.yml</code></td>
+        </tr>
+      </table>
+    </section>
+
+    <!-- ── Final structure ── -->
+    <section id="structure" class="section">
+      <h2>Итоговая структура проекта</h2>
+
+      <div class="tree">
+        <span class="dir">docuz-test/</span><br>
+        ├── <span class="new">.github/</span><br>
+        │   └── <span class="new">workflows/</span><br>
+        │       └── <span class="new">deploy.yml</span>          <span style="color:#94a3b8">← GitHub Actions</span><br>
+        ├── <span class="dir">docs/</span><br>
+        │   ├── <span class="dir">en/</span>                     <span style="color:#94a3b8">← скопировано из mintlify-docs</span><br>
+        │   └── <span class="dir">ru/</span>                     <span style="color:#94a3b8">← скопировано из mintlify-docs</span><br>
+        ├── <span class="dir">src/</span><br>
+        │   ├── <span class="dir">css/</span><br>
+        │   │   └── <span class="changed">custom.css</span>          <span style="color:#94a3b8">← цвета бренда + стили компонентов</span><br>
+        │   ├── <span class="dir">pages/</span><br>
+        │   │   └── <span class="changed">index.js</span>           <span style="color:#94a3b8">← редирект на introduction</span><br>
+        │   └── <span class="dir">theme/</span><br>
+        │       └── <span class="new">MDXComponents.js</span>    <span style="color:#94a3b8">← Mintlify-компоненты</span><br>
+        ├── <span class="changed">docusaurus.config.js</span>        <span style="color:#94a3b8">← URL, baseUrl, navbar</span><br>
+        ├── <span class="changed">sidebars.js</span>                 <span style="color:#94a3b8">← enSidebar + ruSidebar</span><br>
+        └── package.json
+      </div>
+
+      <p style="font-size:13px;color:#64748b">
+        <span style="color:#16a34a">■</span> Зелёный — новые файлы &nbsp;
+        <span style="color:#d97706">■</span> Оранжевый — изменённые файлы
+      </p>
+    </section>
+
+    <footer>
+      Подготовлено в рамках миграции Doc Reviewer с Mintlify на Docusaurus · Май 2026
+    </footer>
+
+  </main>
+</div>
+
+</body>
+</html>
