@@ -1,0 +1,77 @@
+---
+title: "Doc Reviewer: documentation quality analysis using LLM"
+description: "Doc Reviewer helps technical writers assess the completeness and quality of instructions using configurable LLM criteria."
+---
+
+Doc Reviewer automatically scans your technical documentation — PDFs, Word documents, Markdown files, and web pages — detects instruction sections, and evaluates each one against a configurable set of quality criteria using large language models. For each instruction the program outputs an evaluation and recommendations on what can be improved.
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/en/installation">
+    Download and set up Doc Reviewer on Windows, connect your LLM, and run your first evaluation.
+  </Card>
+
+  <Card title="Quick Start" icon="bolt" href="/en/quickstart">
+    Upload your first document and get evaluation results in minutes.
+  </Card>
+
+  <Card title="Core Concepts" icon="book-open" href="/en/concepts/projects">
+    Understand projects, documents, evaluation results, and criteria sets.
+  </Card>
+
+  <Card title="Configuration" icon="sliders" href="/en/configuration/llm-models">
+    Connect OpenAI, Anthropic, Ollama, or any OpenAI‑compatible model.
+  </Card>
+</CardGroup>
+
+## How it works
+
+<Steps>
+  <Step title="Install and launch">
+    Download the `doc-reviewer.exe` and run it. The app starts a local server and opens in your browser automatically.
+  </Step>
+  <Step title="Select and configure an LLM model">
+    In **Settings → Models**, choose a model from the list or add your own custom model. If the model requires a key, click **Edit** and enter the API key. You can also configure a local model via Ollama.
+  </Step>
+  <Step title="Create a project and upload documents">
+    Create a project for your product, then upload PDF, DOCX, Markdown or TXT files — or upload pages by URL.
+  </Step>
+  <Step title="Run evaluation and review results">
+    Click **Evaluate** to analyze all instruction sections. Review color‑coded results and recommendations, then export them to XLS.
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Multi-format document support" icon="file-lines">
+    Parse and evaluate PDF, DOCX, Markdown, and TXT files. Load web pages by URL using a headless browser.
+  </Card>
+
+  <Card title="Automatic instruction detection" icon="magnifying-glass">
+    Doc Reviewer automatically identifies instruction sections in your documents using morphological analysis — no manual tagging required.
+  </Card>
+
+  <Card title="Configurable evaluation criteria" icon="list-check">
+    Use the built-in criteria set or create your own. Edit criteria directly in the UI using Markdown format.
+  </Card>
+
+  <Card title="Version comparison with snapshots" icon="code-compare">
+    Save evaluation results as snapshots and compare them between document versions to track improvements.
+  </Card>
+
+  <Card title="Product context for precise evaluation" icon="brain">
+    Add a product description to the project — the LLM will consider the product's terminology and audience when evaluating instructions.
+  </Card>
+
+  <Card title="Local operation and privacy" icon="lock">
+    All data stays on your machine. Doc Reviewer uses a local SQLite database and runs entirely offline except for LLM API calls.
+  </Card>
+
+  <Card title="Automatic product glossary (YAKE)" icon="tags">
+    When a document is uploaded, Doc Reviewer extracts a glossary of key product terms using YAKE and includes it in LLM prompts, reducing false‑positive warnings.
+  </Card>
+
+  <Card title="Smart re‑evaluation on document updates" icon="refresh">
+    On document replacement, unchanged sections are copied from previous evaluations, partially changed sections receive diff hints, and only new content is re‑evaluated, saving LLM calls.
+  </Card>
+</CardGroup>

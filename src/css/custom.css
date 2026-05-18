@@ -1,0 +1,318 @@
+/**
+ * src/css/custom.css
+ *
+ * 1. Цветовая схема Doc Reviewer (из docs.json)
+ * 2. Стили для Mintlify-компонентов, реализованных в MDXComponents.js:
+ *    Card, CardGroup, Steps, Step,
+ *    Note / Tip / Warning (admonitions),
+ *    CodeGroup (обёртка над Tabs),
+ *    Accordion / AccordionGroup
+ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   1. Цветовая схема
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ifm-color-primary:          #2D7DD2;
+  --ifm-color-primary-dark:     #2570C4;
+  --ifm-color-primary-darker:   #2169BA;
+  --ifm-color-primary-darkest:  #1A549A;
+  --ifm-color-primary-light:    #3F8ADA;
+  --ifm-color-primary-lighter:  #4892DE;
+  --ifm-color-primary-lightest: #68A8E8;
+
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(45, 125, 210, 0.1);
+
+  /* Переменные компонентов */
+  --doc-card-border:        #e5e7eb;
+  --doc-card-bg:            #ffffff;
+  --doc-card-hover-shadow:  0 4px 12px rgba(45, 125, 210, 0.15);
+  --doc-step-line:          #d1d5db;
+  --doc-step-number-bg:     var(--ifm-color-primary);
+  --doc-step-number-color:  #ffffff;
+  --doc-accordion-border:   #e5e7eb;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary:          #5EA8F0;
+  --ifm-color-primary-dark:     #3F97EC;
+  --ifm-color-primary-darker:   #2F8FEA;
+  --ifm-color-primary-darkest:  #1A7AD8;
+  --ifm-color-primary-light:    #7DB9F3;
+  --ifm-color-primary-lighter:  #8DC1F5;
+  --ifm-color-primary-lightest: #B3D8FA;
+
+  --docusaurus-highlighted-code-line-bg: rgba(94, 168, 240, 0.15);
+
+  --doc-card-border:        #374151;
+  --doc-card-bg:            #1f2937;
+  --doc-card-hover-shadow:  0 4px 12px rgba(94, 168, 240, 0.2);
+  --doc-step-line:          #4b5563;
+  --doc-accordion-border:   #374151;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   2. CardGroup + Card
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.doc-card-group {
+  display: grid;
+  grid-template-columns: repeat(var(--doc-card-cols, 2), 1fr);
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+/* На узких экранах — одна колонка */
+@media (max-width: 640px) {
+  .doc-card-group {
+    grid-template-columns: 1fr;
+  }
+}
+
+.doc-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none !important;
+}
+
+.doc-card {
+  border: 1px solid var(--doc-card-border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  background: var(--doc-card-bg);
+  height: 100%;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.doc-card-link:hover .doc-card,
+.doc-card:hover {
+  box-shadow: var(--doc-card-hover-shadow);
+  border-color: var(--ifm-color-primary);
+}
+
+.doc-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.doc-card-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.doc-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--ifm-color-primary);
+}
+
+.doc-card-link:hover .doc-card-title {
+  text-decoration: underline;
+}
+
+.doc-card-body {
+  font-size: 0.875rem;
+  color: var(--ifm-font-color-secondary, #6b7280);
+  line-height: 1.5;
+  margin-top: 0.3rem;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   3. Steps + Step
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.doc-steps {
+  margin: 1.5rem 0;
+  position: relative;
+}
+
+.doc-step {
+  display: flex;
+  gap: 1.25rem;
+  position: relative;
+  padding-bottom: 1.75rem;
+}
+
+/* Вертикальная линия между шагами */
+.doc-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 1rem;           /* центр кружка (2rem / 2) */
+  top: 2rem;            /* ниже кружка */
+  bottom: 0;
+  width: 2px;
+  background: var(--doc-step-line);
+}
+
+.doc-step-marker {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--doc-step-number-bg);
+  color: var(--doc-step-number-color);
+  font-weight: 700;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.doc-step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-step-title {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  line-height: 2rem; /* выравнивание по кружку */
+}
+
+.doc-step-body {
+  font-size: 0.9rem;
+}
+
+.doc-step-body > *:first-child {
+  margin-top: 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   4. Admonitions: Note / Tip / Warning / Info
+   Используем стандартные Docusaurus-классы, дополняем только шапку.
+   alert--info не входит в стандартный Docusaurus, добавляем вручную.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Info (синий, аналог --info в Bootstrap) */
+.alert--info {
+  --ifm-alert-background-color: #eff6ff;
+  --ifm-alert-border-color:     #3b82f6;
+  --ifm-alert-color:            #1e40af;
+  background-color: var(--ifm-alert-background-color);
+  border-left: 4px solid var(--ifm-alert-border-color);
+}
+
+[data-theme='dark'] .alert--info {
+  --ifm-alert-background-color: #1e3a5f;
+  --ifm-alert-border-color:     #60a5fa;
+  --ifm-alert-color:            #bfdbfe;
+}
+
+.doc-admonition {
+  margin: 1rem 0;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.doc-admonition .admonition-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.4rem;
+}
+
+.doc-admonition .admonition-icon {
+  font-size: 1rem;
+}
+
+.doc-admonition .admonition-content {
+  font-size: 0.9rem;
+}
+
+.doc-admonition .admonition-content > *:last-child {
+  margin-bottom: 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   5. AccordionGroup + Accordion
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.doc-accordion-group {
+  margin: 1.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.doc-accordion {
+  border: 1px solid var(--doc-accordion-border);
+  border-radius: 0;
+  margin-top: -1px; /* склеиваем границы */
+  overflow: hidden;
+}
+
+.doc-accordion:first-child {
+  border-radius: 8px 8px 0 0;
+}
+
+.doc-accordion:last-child {
+  border-radius: 0 0 8px 8px;
+  margin-bottom: 1rem;
+}
+
+.doc-accordion:only-child {
+  border-radius: 8px;
+}
+
+.doc-accordion-summary {
+  cursor: pointer;
+  padding: 0.85rem 1.1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  user-select: none;
+  transition: background 0.1s ease;
+}
+
+.doc-accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.doc-accordion-summary::before {
+  content: '▶';
+  font-size: 0.65rem;
+  transition: transform 0.2s ease;
+  color: var(--ifm-color-primary);
+  flex-shrink: 0;
+}
+
+.doc-accordion[open] > .doc-accordion-summary::before {
+  transform: rotate(90deg);
+}
+
+.doc-accordion-summary:hover {
+  background: var(--ifm-hover-overlay);
+}
+
+.doc-accordion-body {
+  padding: 0.75rem 1.1rem 1rem;
+  font-size: 0.9rem;
+  border-top: 1px solid var(--doc-accordion-border);
+}
+
+.doc-accordion-body > *:first-child {
+  margin-top: 0;
+}
+
+.doc-accordion-body > *:last-child {
+  margin-bottom: 0;
+}
