@@ -44,10 +44,11 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: '.github/scripts/requirements.txt'
 
       - name: Install Python deps
         run: |
-          pip install openai requests
+          pip install -r .github/scripts/requirements.txt
 
       # ── 3. Vale ──────────────────────────────────────────────────
       - name: Install Vale
