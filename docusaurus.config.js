@@ -12,9 +12,11 @@ const config = {
   tagline: 'Evaluate instruction quality with AI',
   favicon: 'img/favicon.ico',
 
-  // При локальном запуске — localhost. Для деплоя замените на реальный URL.
-  url: 'http://localhost:3000',
-  baseUrl: '/',
+  url: 'https://amihailov76.github.io',
+  baseUrl: '/docuz-test/',
+  organizationName: 'amihailov76',
+  projectName: 'docuz-test',
+  trailingSlash: false,
 
   // Предупреждать о сломанных ссылках, но не прерывать сборку —
   // удобно на этапе миграции контента.
