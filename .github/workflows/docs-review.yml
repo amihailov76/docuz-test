@@ -19,12 +19,19 @@ permissions:
 
 jobs:
   docs-review:
-    # Запускаем только если добавлен именно нужный лейбл
-    if: github.event.label.name == 'docs-review'
+    # Запускаем если добавлен нужный лейбл или это ручной запуск
+    if: github.event.label.name == 'docs-review' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
+      # ── 0. Debug: показываем контекст события ─────────────────────
+      - name: Debug event context
+        run: |
+          echo "event_name: ${{ github.event_name }}"
+          echo "label.name: ${{ github.event.label.name }}"
+          echo "PR number:  ${{ github.event.pull_request.number }}"
+
       # ── 1. Получаем код ───────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
