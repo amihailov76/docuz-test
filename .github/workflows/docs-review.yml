@@ -21,8 +21,13 @@ jobs:
   docs-review:
     # Запускаем если добавлен нужный лейбл или это ручной запуск
     if: github.event.label.name == 'docs-review' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
+
+    # Все run-шаги используют bash (Git Bash на Windows)
+    defaults:
+      run:
+        shell: bash
 
     steps:
       # ── 0. Debug: показываем контекст события ─────────────────────
@@ -31,6 +36,7 @@ jobs:
           echo "event_name: ${{ github.event_name }}"
           echo "label.name: ${{ github.event.label.name }}"
           echo "PR number:  ${{ github.event.pull_request.number }}"
+          echo "RUNNER_TEMP: $RUNNER_TEMP"
 
       # ── 1. Получаем код ───────────────────────────────────────────
       - name: Checkout
@@ -54,20 +60,20 @@ jobs:
       - name: Install Vale
         run: |
           VALE_VERSION="3.14.2"
-          curl -sL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
-            -o /tmp/vale.tar.gz
-          tar -xzf /tmp/vale.tar.gz -C /tmp vale
-          sudo mv /tmp/vale /usr/local/bin/vale
-          vale --version
+          curl -sL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Windows_64-bit.zip" \
+            -o "$RUNNER_TEMP/vale.zip"
+          unzip -o "$RUNNER_TEMP/vale.zip" -d "$RUNNER_TEMP/vale-bin"
+          echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/vale-bin/vale" --version
 
       - name: Sync Vale packages (Microsoft, proselint)
-        run: vale sync
+        run: |
+          "$RUNNER_TEMP/vale-bin/vale" sync
 
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
         id: changed-files
         run: |
-          # Берём только .mdx из docs/ru/ и docs/en/ (исключаем tutorial-*)
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
             | grep -E '^docs/(ru|en)/.+\.mdx$' \
             || true)
@@ -78,8 +84,7 @@ jobs:
           else
             echo "Changed files:"
             echo "$CHANGED"
-            # Сохраняем в файл для следующих шагов
-            echo "$CHANGED" > /tmp/changed_files.txt
+            echo "$CHANGED" > "$RUNNER_TEMP/changed_files.txt"
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -94,12 +99,13 @@ jobs:
         if: steps.changed-files.outputs.has_files == 'true'
         id: vale
         run: |
-          # Запускаем Vale на каждом изменённом файле, выводим JSON
-          FILES=$(cat /tmp/changed_files.txt | tr '\n' ' ')
-          vale --output=JSON --config=.vale.ini $FILES > /tmp/vale_output.json 2>/dev/null || true
+          FILES=$(cat "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
+          "$RUNNER_TEMP/vale-bin/vale" --output=JSON --config=.vale.ini $FILES \
+            > "$RUNNER_TEMP/vale_output.json" 2>/dev/null || true
 
           echo "Vale output:"
-          cat /tmp/vale_output.json | python3 -m json.tool 2>/dev/null | head -80 || cat /tmp/vale_output.json
+          python -m json.tool "$RUNNER_TEMP/vale_output.json" 2>/dev/null \
+            | head -80 || cat "$RUNNER_TEMP/vale_output.json"
 
       # ── 7. Health-check MCP-сервера ───────────────────────────────
       - name: MCP server health check
@@ -141,9 +147,9 @@ jobs:
         if: steps.changed-files.outputs.has_files == 'true'
         env:
           # LLM-настройки (OpenAI-совместимый API)
-          LLM_API_KEY:   ${{ secrets.LLM_API_KEY }}    # API-ключ (обязательно)
-          LLM_BASE_URL:  ${{ vars.LLM_BASE_URL }}      # кастомный эндпоинт (если задан)
-          LLM_MODEL:     ${{ vars.LLM_MODEL }}          # имя модели (если задано)
+          LLM_API_KEY:   ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL:  ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL:     ${{ vars.LLM_MODEL }}
           # MCP + GitHub
           MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
@@ -153,6 +159,6 @@ jobs:
           REPO:           ${{ github.repository }}
           BASE_REF:       ${{ github.base_ref }}
         run: |
-          python3 .github/scripts/review-agent.py \
-            --changed-files /tmp/changed_files.txt \
-            --vale-output /tmp/vale_output.json
+          python .github/scripts/review-agent.py \
+            --changed-files "$RUNNER_TEMP/changed_files.txt" \
+            --vale-output "$RUNNER_TEMP/vale_output.json"
