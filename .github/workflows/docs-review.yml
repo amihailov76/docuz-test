@@ -62,7 +62,26 @@ jobs:
 
       - name: Sync Vale packages (Microsoft, proselint)
         run: |
-          "$RUNNER_TEMP/vale-bin/vale" sync
+          echo "Working dir: $(pwd)"
+          echo "Vale config exists: $(test -f .vale.ini && echo YES || echo NO)"
+          "$RUNNER_TEMP/vale-bin/vale" --config=.vale.ini sync
+          echo "--- styles/ after sync ---"
+          ls -la styles/ || echo "styles/ not found"
+
+      # ── 3b. Vale self-test ────────────────────────────────────────
+      - name: Vale self-test
+        run: |
+          echo "--- styles/Russian/ ---"
+          ls styles/Russian/ || echo "MISSING"
+          echo "--- styles/Microsoft/ ---"
+          ls styles/Microsoft/ 2>/dev/null | head -5 || echo "MISSING (not synced)"
+          echo "--- styles/proselint/ ---"
+          ls styles/proselint/ 2>/dev/null | head -5 || echo "MISSING (not synced)"
+          echo "--- Vale config check ---"
+          "$RUNNER_TEMP/vale-bin/vale" --config=.vale.ini ls-config 2>&1 | head -20
+          echo "--- Vale test on synthetic file ---"
+          echo "Вы должны выполнить настройку системы." > "$RUNNER_TEMP/test_ru.md"
+          "$RUNNER_TEMP/vale-bin/vale" --config=.vale.ini --output=line "$RUNNER_TEMP/test_ru.md" 2>&1 || true
 
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
@@ -99,7 +118,7 @@ jobs:
           cat .vale.ini
           echo "Styles dir:"
           ls styles/Russian/ || echo "No Russian styles dir"
-          "$RUNNER_TEMP/vale-bin/vale" --output=JSON --config=.vale.ini $FILES \
+          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" --output=JSON $FILES \
             > "$RUNNER_TEMP/vale_output.json" 2>&1 || true
           echo "Vale exit code: $?"
           echo "Vale output:"
