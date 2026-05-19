@@ -119,7 +119,7 @@
       <span>Прогресс</span>
       <span>Этапы 1–6 завершены · 7 — тестирование</span>
     </div>
-    <div class="progress-track"><div class="progress-fill" style="width: 90%;"></div></div>
+    <div class="progress-track"><div class="progress-fill" style="width: 95%;"></div></div>
   </div>
 
   <!-- Stage 1 -->
@@ -170,15 +170,17 @@
     <div class="items">
       <div class="item done"><span class="check check-done">✓</span>Создать <code>.vale-ru.ini</code> / <code>.vale-en.ini</code> (раздельные конфиги, TokenIgnores для JSX)</div>
       <div class="item done"><span class="check check-done">✓</span>Создать <code>styles/Russian/ForbiddenWords.yml</code></div>
-      <div class="item done"><span class="check check-done">✓</span>Создать <code>styles/Russian/Substitutions.yml</code></div>
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>styles/Russian/Substitutions.yml</code> (existence, не substitution — двунаправленность исключена)</div>
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>styles/Russian/Kancellyarit.yml</code> (канцелярит: отглагольные существительные)</div>
       <div class="item done"><span class="check check-done">✓</span>Закоммитить пакеты Microsoft / proselint в репо (обход корп. сети)</div>
-      <div class="item done"><span class="check check-done">✓</span>Исправлены root-cause баги: Vale работает с кириллицей</div>
+      <div class="item done"><span class="check check-done">✓</span>Python-линтер <code>.github/scripts/ru_linter.py</code>: заменяет Vale для кириллицы, читает те же YAML-правила</div>
     </div>
     <p class="item-note">
-      <strong>Root cause найден и устранён (два взаимосвязанных бага):</strong><br>
-      1. <code>Substitutions.yml</code> содержал lookahead-паттерны <code>(?!...)</code> — Go RE2 их не поддерживает. Vale генерировал ошибку в stderr.<br>
-      2. Workflow перенаправлял stderr Vale в JSON-файл (<code>2&gt;&amp;1</code>), что делало файл невалидным JSON → merge давал <code>{}</code>.<br>
-      <strong>Исправления:</strong> lookaheads убраны из <code>Substitutions.yml</code> · добавлен <code>nonword: true</code> · stderr Vale теперь в отдельный файл (<code>2&gt; vale.err</code>) · диагностический шаг <code>vale ls-config</code> в workflow.
+      <strong>Root cause (цепочка из трёх проблем):</strong><br>
+      1. <code>Substitutions.yml</code> содержал lookahead <code>(?!...)</code> — Go RE2 не поддерживает. Vale давал ошибку в stderr.<br>
+      2. Workflow <code>2&gt;&amp;1</code> мешал stderr в JSON → файл не парсился → merge давал <code>{}</code>.<br>
+      3. После исправления 1+2 выяснилось: Vale <code>existence+raw</code> не матчит кириллицу на Windows-раннере (Go RE2 + Unicode). Только <code>substitution</code>-правила работали, но они двунаправленные — флагали правильные слова.<br>
+      <strong>Итоговое решение:</strong> Vale оставлен только для английских файлов. Для русских — Python-линтер (<code>ru_linter.py</code>), который читает те же <code>styles/Russian/*.yml</code> через Python <code>re</code> с поддержкой Unicode. Проверено локально: 3/3 правила загружены, 35 предупреждений на тестовом файле.
     </p>
   </div>
 
@@ -196,10 +198,10 @@
       <div class="item done"><span class="check check-done">✓</span>Триггер по лейблу <code>docs-review</code>, self-hosted Windows runner</div>
       <div class="item done"><span class="check check-done">✓</span>Health-check MCP-сервера с retry (3 попытки, sleep 10)</div>
       <div class="item done"><span class="check check-done">✓</span>Concurrency guard, timeout 15 мин, permissions</div>
-      <div class="item done"><span class="check check-done">✓</span>Исправлен <code>stderr Vale 2&gt;&amp;1</code> → <code>2&gt; vale.err</code> (JSON больше не засоряется)</div>
+      <div class="item done"><span class="check check-done">✓</span>Разделены шаги линтинга: <code>5а</code> Python для RU · <code>5б</code> Vale для EN · <code>5в</code> merge JSON</div>
       <div class="item done"><span class="check check-done">✓</span>Надёжный Python merge JSON (try/except, проверка формата)</div>
       <div class="item done"><span class="check check-done">✓</span>Обработка <code>workflow_dispatch</code> без PR: input <code>pr_number</code>, graceful exit</div>
-      <div class="item done"><span class="check check-done">✓</span>Диагностический шаг <code>vale ls-config</code> для отладки</div>
+      <div class="item done"><span class="check check-done">✓</span>Диагностический шаг <code>vale ls-config</code> для отладки английских правил</div>
     </div>
   </div>
 
@@ -259,9 +261,9 @@
     </div>
     <div class="items">
       <div class="item done"><span class="check check-done">✓</span>Создан тестовый файл <code>docs/ru/test-review.mdx</code> с намеренными нарушениями</div>
+      <div class="item done"><span class="check check-done">✓</span>Python-линтер протестирован локально: 35 предупреждений, 3/3 правила загружены</div>
       <div class="item active"><span class="check check-active">·</span>Создать PR: добавить изменения в <code>docs/ru/test-review.mdx</code>, навесить лейбл <code>docs-review</code></div>
-      <div class="item active"><span class="check check-active">·</span>Проверить вывод шага <code>Vale config diagnostics</code> — убедиться что Russian-правила загрузились</div>
-      <div class="item active"><span class="check check-active">·</span>Убедиться что Vale нашёл &gt;0 предупреждений в <code>test-review.mdx</code></div>
+      <div class="item active"><span class="check check-active">·</span>Убедиться что шаг <code>Lint Russian files (Python)</code> нашёл &gt;0 предупреждений</div>
       <div class="item active"><span class="check check-active">·</span>Убедиться что LLM-агент оставил inline-комментарии в PR</div>
       <div class="item active"><span class="check check-active">·</span>Зафиксировать итоги, скорректировать правила если нужно</div>
     </div>

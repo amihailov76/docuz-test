@@ -77,29 +77,34 @@ jobs:
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── 5. Vale lint ─────────────────────────────────────────────
-      # ВАЖНО: stderr Vale намеренно перенаправлен в отдельный файл,
-      # а не в stdout (2>&1). Иначе сообщения об ошибках правил
-      # попадают в JSON и ломают его структуру.
-      - name: Run Vale
+      # ── 5а. Python-линтер для русских файлов ──────────────────────
+      # Vale existence+raw не матчит кириллицу на Windows-раннере.
+      # Python-линтер читает те же YAML-правила и выдаёт Vale-совместимый JSON.
+      - name: Lint Russian files (Python)
         if: steps.changed-files.outputs.has_files == 'true'
-        id: vale
+        id: lint-ru
         run: |
           RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
-          EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
-
           if [ -n "$RU_FILES" ]; then
-            "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" --output=JSON $RU_FILES \
-              > "$RUNNER_TEMP/vale_ru.json" \
-              2> "$RUNNER_TEMP/vale_ru.err" \
-              || true
-            if [ -s "$RUNNER_TEMP/vale_ru.err" ]; then
-              echo "[WARN] Vale RU stderr:"
-              cat "$RUNNER_TEMP/vale_ru.err"
-            fi
+            echo "[INFO] Проверяем русские файлы: $RU_FILES"
+            python .github/scripts/ru_linter.py \
+              --files $RU_FILES \
+              --output "$RUNNER_TEMP/vale_ru.json" \
+              --styles-dir "$(pwd)/styles/Russian"
+          else
+            echo "[INFO] Русских файлов нет — пропускаем."
+            echo "{}" > "$RUNNER_TEMP/vale_ru.json"
           fi
 
+      # ── 5б. Vale lint для английских файлов ──────────────────────
+      # ВАЖНО: stderr Vale в отдельный файл — иначе ломает JSON.
+      - name: Lint English files (Vale)
+        if: steps.changed-files.outputs.has_files == 'true'
+        id: lint-en
+        run: |
+          EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
           if [ -n "$EN_FILES" ]; then
+            echo "[INFO] Проверяем английские файлы: $EN_FILES"
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" --output=JSON $EN_FILES \
               > "$RUNNER_TEMP/vale_en.json" \
               2> "$RUNNER_TEMP/vale_en.err" \
@@ -108,9 +113,16 @@ jobs:
               echo "[WARN] Vale EN stderr:"
               cat "$RUNNER_TEMP/vale_en.err"
             fi
+          else
+            echo "[INFO] Английских файлов нет — пропускаем."
+            echo "{}" > "$RUNNER_TEMP/vale_en.json"
           fi
 
-          # Объединяем JSON-файлы с защитой от кривого вывода
+      # ── 5в. Объединяем результаты ────────────────────────────────
+      - name: Merge lint results
+        if: steps.changed-files.outputs.has_files == 'true'
+        id: vale
+        run: |
           python - "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
             > "$RUNNER_TEMP/vale_output.json" << 'PYEOF'
           import json, os, sys
@@ -123,7 +135,7 @@ jobs:
                   if text.startswith("{"):
                       merged.update(json.loads(text))
                   elif text:
-                      print(f"[WARN] {path}: not JSON — skipped", file=sys.stderr)
+                      print(f"[WARN] {path}: не JSON — пропущен", file=sys.stderr)
               except Exception as e:
                   print(f"[WARN] {path}: {e}", file=sys.stderr)
           print(json.dumps(merged))
@@ -138,7 +150,7 @@ jobs:
               print(0, file=sys.stderr)
               print(0)
           " 2>/dev/null || echo 0)
-          echo "Vale warnings: $WARN_COUNT"
+          echo "Всего предупреждений: $WARN_COUNT"
 
       # ── 6. Health-check MCP-сервера ───────────────────────────────
       - name: MCP server health check
