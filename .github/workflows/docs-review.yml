@@ -94,12 +94,16 @@ jobs:
         id: vale
         run: |
           FILES=$(cat "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
+          echo "Running Vale on: $FILES"
+          echo "Vale config:"
+          cat .vale.ini
+          echo "Styles dir:"
+          ls styles/Russian/ || echo "No Russian styles dir"
           "$RUNNER_TEMP/vale-bin/vale" --output=JSON --config=.vale.ini $FILES \
-            > "$RUNNER_TEMP/vale_output.json" 2>/dev/null || true
-
+            > "$RUNNER_TEMP/vale_output.json" 2>&1 || true
+          echo "Vale exit code: $?"
           echo "Vale output:"
-          python -m json.tool "$RUNNER_TEMP/vale_output.json" 2>/dev/null \
-            | head -80 || cat "$RUNNER_TEMP/vale_output.json"
+          cat "$RUNNER_TEMP/vale_output.json"
 
       # ── 7. Health-check MCP-сервера ───────────────────────────────
       - name: MCP server health check
