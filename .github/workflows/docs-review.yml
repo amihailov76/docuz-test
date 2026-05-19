@@ -44,16 +44,10 @@ jobs:
         with:
           fetch-depth: 0   # нужна история для diff
 
-      # ── 2. Python ────────────────────────────────────────────────
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: '.github/scripts/requirements.txt'
-
+      # ── 2. Python (используем системный Python на self-hosted раннере) ──
       - name: Install Python deps
         run: |
+          python --version
           pip install -r .github/scripts/requirements.txt
 
       # ── 3. Vale ──────────────────────────────────────────────────
