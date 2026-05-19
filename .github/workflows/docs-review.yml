@@ -54,7 +54,8 @@ jobs:
       - name: Install Vale
         run: |
           VALE_VERSION="3.14.2"
-          curl -sL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Windows_64-bit.zip" \
+          curl -sL --max-time 120 \
+            "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Windows_64-bit.zip" \
             -o "$RUNNER_TEMP/vale.zip"
           unzip -o "$RUNNER_TEMP/vale.zip" -d "$RUNNER_TEMP/vale-bin"
           echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
@@ -63,10 +64,9 @@ jobs:
       - name: Sync Vale packages (Microsoft, proselint)
         run: |
           echo "Working dir: $(pwd)"
-          echo "Vale config exists: $(test -f .vale.ini && echo YES || echo NO)"
-          "$RUNNER_TEMP/vale-bin/vale" --config=.vale.ini sync
+          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" sync
           echo "--- styles/ after sync ---"
-          ls -la styles/ || echo "styles/ not found"
+          ls styles/ || echo "styles/ not found"
 
       # ── 3b. Vale self-test ────────────────────────────────────────
       - name: Vale self-test
@@ -78,10 +78,10 @@ jobs:
           echo "--- styles/proselint/ ---"
           ls styles/proselint/ 2>/dev/null | head -5 || echo "MISSING (not synced)"
           echo "--- Vale config check ---"
-          "$RUNNER_TEMP/vale-bin/vale" --config=.vale.ini ls-config 2>&1 | head -20
+          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" ls-config 2>&1 | head -20
           echo "--- Vale test on synthetic file ---"
           echo "Вы должны выполнить настройку системы." > "$RUNNER_TEMP/test_ru.md"
-          "$RUNNER_TEMP/vale-bin/vale" --config=.vale.ini --output=line "$RUNNER_TEMP/test_ru.md" 2>&1 || true
+          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" --output=line "$RUNNER_TEMP/test_ru.md" 2>&1 || true
 
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
