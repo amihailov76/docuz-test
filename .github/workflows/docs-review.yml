@@ -1,14 +1,10 @@
 name: Docs Review
 
-# ─────────────────────────────────────────────────────────────────
-# Trigger: запускается только когда на PR навешивают лейбл docs-review
-# ─────────────────────────────────────────────────────────────────
 on:
   pull_request:
     types: [labeled]
-  workflow_dispatch:   # ← временно: ручной запуск для отладки
+  workflow_dispatch:
 
-# Одновременно может выполняться только один запуск на PR
 concurrency:
   group: docs-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -19,36 +15,25 @@ permissions:
 
 jobs:
   docs-review:
-    # Запускаем если добавлен нужный лейбл или это ручной запуск
     if: github.event.label.name == 'docs-review' || github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
     timeout-minutes: 15
 
-    # Все run-шаги используют bash (Git Bash на Windows)
     defaults:
       run:
         shell: bash
 
     steps:
-      # ── 0. Debug: показываем контекст события ─────────────────────
-      - name: Debug event context
-        run: |
-          echo "event_name: ${{ github.event_name }}"
-          echo "label.name: ${{ github.event.label.name }}"
-          echo "PR number:  ${{ github.event.pull_request.number }}"
-          echo "RUNNER_TEMP: $RUNNER_TEMP"
-
       # ── 1. Получаем код ───────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # нужна история для diff
+          fetch-depth: 0
 
-      # ── 2. Python (используем системный Python на self-hosted раннере) ──
+      # ── 2. Python ────────────────────────────────────────────────
       - name: Install Python deps
         run: |
-          python --version
-          pip install -r .github/scripts/requirements.txt
+          pip install -r .github/scripts/requirements.txt --quiet
 
       # ── 3. Vale ──────────────────────────────────────────────────
       - name: Install Vale
@@ -61,20 +46,6 @@ jobs:
           echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/vale-bin/vale" --version
 
-      - name: Sync Vale packages (Microsoft, proselint)
-        run: |
-          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" sync
-          echo "styles/Microsoft: $(ls styles/Microsoft/ 2>/dev/null | wc -l) files"
-          echo "styles/Russian:   $(ls styles/Russian/  2>/dev/null | wc -l) files"
-
-      # ── 3b. Vale self-test ────────────────────────────────────────
-      - name: Vale self-test
-        run: |
-          echo "=== Russian rules test ==="
-          echo "Вы должны выполнить настройку системы." > "$RUNNER_TEMP/test_ru.md"
-          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" --output=line \
-            "$RUNNER_TEMP/test_ru.md" 2>&1 || true
-
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
         id: changed-files
@@ -82,59 +53,40 @@ jobs:
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
             | grep -E '^docs/(ru|en)/.+\.mdx$' \
             || true)
-
           if [ -z "$CHANGED" ]; then
             echo "No eligible docs files changed."
             echo "has_files=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Changed files:"
-            echo "$CHANGED"
+            echo "Changed files: $CHANGED"
             echo "$CHANGED" > "$RUNNER_TEMP/changed_files.txt"
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── 5. Если нет подходящих файлов — выходим ──────────────────
-      - name: Skip if no docs changed
-        if: steps.changed-files.outputs.has_files == 'false'
-        run: |
-          echo "No docs/ru or docs/en .mdx files changed. Skipping review."
-
-      # ── 6. Vale lint ─────────────────────────────────────────────
+      # ── 5. Vale lint ─────────────────────────────────────────────
       - name: Run Vale
         if: steps.changed-files.outputs.has_files == 'true'
         id: vale
         run: |
-          FILES=$(cat "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
-          echo "Running Vale on: $FILES"
-          echo "Vale config:"
-          cat .vale.ini
-          echo "Styles dir:"
-          ls styles/Russian/ || echo "No Russian styles dir"
-          RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
-          EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
-          echo "{}" > "$RUNNER_TEMP/vale_output.json"
+          RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
+          EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
+
           if [ -n "$RU_FILES" ]; then
-            echo "Running Vale (Russian) on: $RU_FILES"
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" --output=JSON $RU_FILES \
               > "$RUNNER_TEMP/vale_ru.json" 2>&1 || true
-            cat "$RUNNER_TEMP/vale_ru.json"
           fi
           if [ -n "$EN_FILES" ]; then
-            echo "Running Vale (English) on: $EN_FILES"
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" --output=JSON $EN_FILES \
               > "$RUNNER_TEMP/vale_en.json" 2>&1 || true
-            cat "$RUNNER_TEMP/vale_en.json"
           fi
-          # Объединяем JSON для агента (однострочный python)
+
           python -c "import json,os,sys;d={};[d.update(json.load(open(f,encoding='utf-8'))) for f in sys.argv[1:] if os.path.exists(f)];print(json.dumps(d))" \
             "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
             > "$RUNNER_TEMP/vale_output.json" 2>/dev/null \
             || echo "{}" > "$RUNNER_TEMP/vale_output.json"
-          echo "Vale exit code: $?"
-          echo "Vale output:"
-          cat "$RUNNER_TEMP/vale_output.json"
 
-      # ── 7. Health-check MCP-сервера ───────────────────────────────
+          echo "Vale warnings: $(python -c "import json;d=json.load(open('$RUNNER_TEMP/vale_output.json'));print(sum(len(v) for v in d.values() if isinstance(v,list)))" 2>/dev/null || echo 0)"
+
+      # ── 6. Health-check MCP-сервера ───────────────────────────────
       - name: MCP server health check
         if: steps.changed-files.outputs.has_files == 'true'
         id: mcp-health
@@ -142,63 +94,27 @@ jobs:
           MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
           MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
         run: |
-          MAX_RETRIES=3
-          RETRY_DELAY=10
           STATUS="unavailable"
-
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo "Health check attempt $i/$MAX_RETRIES..."
+          for i in 1 2 3; do
             HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
               -H "Authorization: Bearer $MCP_API_KEY" \
               --max-time 10 \
-              "$MCP_SERVER_URL/health" || echo "000")
-
+              "$MCP_SERVER_URL/health" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
-              echo "MCP server is healthy."
-              STATUS="ok"
-              break
-            else
-              echo "Got HTTP $HTTP_CODE, retrying in ${RETRY_DELAY}s..."
-              sleep $RETRY_DELAY
+              STATUS="ok"; break
             fi
+            sleep 10
           done
-
           echo "mcp_status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "MCP status: $STATUS"
 
-          if [ "$STATUS" != "ok" ]; then
-            echo "::warning::MCP server unavailable after $MAX_RETRIES attempts. Agent will use local style guide fallback."
-          fi
-
-      # ── 7b. Debug LLM connectivity ───────────────────────────────
-      - name: Debug LLM connection
-        env:
-          LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}
-          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
-          LLM_MODEL:    ${{ vars.LLM_MODEL }}
-        run: |
-          echo "LLM_BASE_URL='${LLM_BASE_URL}'"
-          echo "LLM_MODEL='${LLM_MODEL}'"
-          echo "LLM_API_KEY length: ${#LLM_API_KEY}"
-          echo "HTTPS_PROXY='${HTTPS_PROXY}'"
-          echo "HTTP_PROXY='${HTTP_PROXY}'"
-          TEST_URL="${LLM_BASE_URL%/}/models"
-          echo "Testing: $TEST_URL"
-          HTTP_CODE=$(curl -s -o /tmp/llm_test.txt -w "%{http_code}" \
-            -H "Authorization: Bearer ${LLM_API_KEY}" \
-            --max-time 15 \
-            "$TEST_URL" || echo "CURL_FAILED")
-          echo "HTTP status: $HTTP_CODE"
-          cat /tmp/llm_test.txt | head -5 || true
-
-      # ── 8. LLM review agent ───────────────────────────────────────
+      # ── 7. LLM review agent ───────────────────────────────────────
       - name: Run LLM review agent
         if: steps.changed-files.outputs.has_files == 'true'
         env:
-          # LLM-настройки (OpenAI-совместимый API)
-          LLM_API_KEY:   ${{ secrets.LLM_API_KEY }}
-          LLM_BASE_URL:  ${{ vars.LLM_BASE_URL }}
-          LLM_MODEL:     ${{ vars.LLM_MODEL }}
-          # MCP + GitHub
+          LLM_API_KEY:    ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL:   ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL:      ${{ vars.LLM_MODEL }}
           MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
           MCP_STATUS:     ${{ steps.mcp-health.outputs.mcp_status }}
