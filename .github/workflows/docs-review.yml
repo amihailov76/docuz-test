@@ -4,9 +4,14 @@ on:
   pull_request:
     types: [labeled]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Номер PR для проверки (оставьте пустым — workflow завершится без ошибки)'
+        required: false
+        default: ''
 
 concurrency:
-  group: docs-review-${{ github.event.pull_request.number }}
+  group: docs-review-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -46,23 +51,36 @@ jobs:
           echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/vale-bin/vale" --version
 
+      # ── 3а. Диагностика Vale-конфигов (помогает при отладке) ─────
+      - name: Vale config diagnostics
+        run: |
+          echo "=== .vale-ru.ini ===" && \
+            "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" ls-config 2>&1 | head -40 || true
+          echo "=== .vale-en.ini ===" && \
+            "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" ls-config 2>&1 | head -40 || true
+
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
         id: changed-files
         run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+          BASE="${{ github.base_ref || 'main' }}"
+          CHANGED=$(git diff --name-only "origin/${BASE}...HEAD" \
             | grep -E '^docs/(ru|en)/.+\.mdx$' \
             || true)
           if [ -z "$CHANGED" ]; then
             echo "No eligible docs files changed."
             echo "has_files=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Changed files: $CHANGED"
+            echo "Changed files:"
+            echo "$CHANGED"
             echo "$CHANGED" > "$RUNNER_TEMP/changed_files.txt"
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
       # ── 5. Vale lint ─────────────────────────────────────────────
+      # ВАЖНО: stderr Vale намеренно перенаправлен в отдельный файл,
+      # а не в stdout (2>&1). Иначе сообщения об ошибках правил
+      # попадают в JSON и ломают его структуру.
       - name: Run Vale
         if: steps.changed-files.outputs.has_files == 'true'
         id: vale
@@ -72,19 +90,55 @@ jobs:
 
           if [ -n "$RU_FILES" ]; then
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" --output=JSON $RU_FILES \
-              > "$RUNNER_TEMP/vale_ru.json" 2>&1 || true
+              > "$RUNNER_TEMP/vale_ru.json" \
+              2> "$RUNNER_TEMP/vale_ru.err" \
+              || true
+            if [ -s "$RUNNER_TEMP/vale_ru.err" ]; then
+              echo "[WARN] Vale RU stderr:"
+              cat "$RUNNER_TEMP/vale_ru.err"
+            fi
           fi
+
           if [ -n "$EN_FILES" ]; then
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" --output=JSON $EN_FILES \
-              > "$RUNNER_TEMP/vale_en.json" 2>&1 || true
+              > "$RUNNER_TEMP/vale_en.json" \
+              2> "$RUNNER_TEMP/vale_en.err" \
+              || true
+            if [ -s "$RUNNER_TEMP/vale_en.err" ]; then
+              echo "[WARN] Vale EN stderr:"
+              cat "$RUNNER_TEMP/vale_en.err"
+            fi
           fi
 
-          python -c "import json,os,sys;d={};[d.update(json.load(open(f,encoding='utf-8'))) for f in sys.argv[1:] if os.path.exists(f)];print(json.dumps(d))" \
-            "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
-            > "$RUNNER_TEMP/vale_output.json" 2>/dev/null \
-            || echo "{}" > "$RUNNER_TEMP/vale_output.json"
+          # Объединяем JSON-файлы с защитой от кривого вывода
+          python - "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
+            > "$RUNNER_TEMP/vale_output.json" << 'PYEOF'
+          import json, os, sys
+          merged = {}
+          for path in sys.argv[1:]:
+              if not os.path.exists(path):
+                  continue
+              try:
+                  text = open(path, encoding="utf-8").read().strip()
+                  if text.startswith("{"):
+                      merged.update(json.loads(text))
+                  elif text:
+                      print(f"[WARN] {path}: not JSON — skipped", file=sys.stderr)
+              except Exception as e:
+                  print(f"[WARN] {path}: {e}", file=sys.stderr)
+          print(json.dumps(merged))
+          PYEOF
 
-          echo "Vale warnings: $(python -c "import json;d=json.load(open('$RUNNER_TEMP/vale_output.json'));print(sum(len(v) for v in d.values() if isinstance(v,list)))" 2>/dev/null || echo 0)"
+          WARN_COUNT=$(python -c "
+          import json, sys
+          try:
+              d = json.load(open('$RUNNER_TEMP/vale_output.json'))
+              print(sum(len(v) for v in d.values() if isinstance(v, list)))
+          except Exception as e:
+              print(0, file=sys.stderr)
+              print(0)
+          " 2>/dev/null || echo 0)
+          echo "Vale warnings: $WARN_COUNT"
 
       # ── 6. Health-check MCP-сервера ───────────────────────────────
       - name: MCP server health check
@@ -95,16 +149,21 @@ jobs:
           MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
         run: |
           STATUS="unavailable"
-          for i in 1 2 3; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Authorization: Bearer $MCP_API_KEY" \
-              --max-time 10 \
-              "$MCP_SERVER_URL/health" 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" = "200" ]; then
-              STATUS="ok"; break
-            fi
-            sleep 10
-          done
+          if [ -z "$MCP_SERVER_URL" ]; then
+            echo "MCP_SERVER_URL не задан, используем локальный стайлгайд."
+          else
+            for i in 1 2 3; do
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                -H "Authorization: Bearer $MCP_API_KEY" \
+                --max-time 10 \
+                "$MCP_SERVER_URL/health" 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" = "200" ]; then
+                STATUS="ok"; break
+              fi
+              echo "Попытка $i: HTTP $HTTP_CODE. Повтор через 10с..."
+              sleep 10
+            done
+          fi
           echo "mcp_status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "MCP status: $STATUS"
 
@@ -119,9 +178,9 @@ jobs:
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
           MCP_STATUS:     ${{ steps.mcp-health.outputs.mcp_status }}
           GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER:      ${{ github.event.pull_request.number }}
+          PR_NUMBER:      ${{ github.event.pull_request.number || inputs.pr_number }}
           REPO:           ${{ github.repository }}
-          BASE_REF:       ${{ github.base_ref }}
+          BASE_REF:       ${{ github.base_ref || 'main' }}
         run: |
           python .github/scripts/review-agent.py \
             --changed-files "$RUNNER_TEMP/changed_files.txt" \

@@ -1,0 +1,24 @@
+# render.yaml — конфигурация деплоя на Render.com
+# Разместить в корне репозитория.
+# После деплоя: скопировать URL сервиса в GitHub → Settings → Variables → MCP_SERVER_URL
+
+services:
+  - type: web
+    name: docs-style-guide-mcp
+    runtime: python
+    region: frankfurt          # ближайший к вашему runner-у регион
+    plan: free                 # free-tier достаточно (500 ч/мес)
+
+    buildCommand: pip install -r mcp_server/requirements.txt
+
+    startCommand: >
+      uvicorn mcp_server.app:app
+      --host 0.0.0.0
+      --port $PORT
+
+    # Переменные окружения (значения задаются в дашборде Render, не здесь!)
+    envVars:
+      - key: MCP_API_KEY
+        sync: false           # задать вручную в Render Dashboard → Environment
+
+    healthCheckPath: /health

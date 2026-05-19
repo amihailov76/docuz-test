@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs Review — план реализации</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 40px 24px 80px;
+      line-height: 1.5;
+    }
+
+    .container { max-width: 780px; margin: 0 auto; }
+
+    header { margin-bottom: 40px; }
+    header h1 { font-size: 1.6rem; font-weight: 700; color: #f8fafc; }
+    header p { margin-top: 6px; font-size: 0.9rem; color: #64748b; }
+
+    .progress-wrap { margin: 24px 0 36px; }
+    .progress-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.8rem; color: #64748b; margin-bottom: 8px;
+    }
+    .progress-track {
+      height: 6px; background: #1e293b; border-radius: 99px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      transition: width 0.4s ease;
+    }
+
+    .stage { margin-bottom: 32px; }
+    .stage-header {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px;
+    }
+    .stage-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 50%;
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    }
+    .badge-done    { background: #166534; color: #86efac; }
+    .badge-active  { background: #1e3a5f; color: #60a5fa; }
+    .badge-pending { background: #1e293b; color: #475569; }
+    .badge-problem { background: #7f1d1d; color: #fca5a5; }
+    .badge-partial { background: #78350f; color: #fcd34d; }
+
+    .stage-title { font-size: 1rem; font-weight: 600; color: #f1f5f9; }
+    .stage-status {
+      margin-left: auto; font-size: 0.75rem; font-weight: 500;
+      padding: 2px 10px; border-radius: 99px;
+    }
+    .status-done    { background: #14532d; color: #86efac; }
+    .status-active  { background: #172554; color: #93c5fd; }
+    .status-pending { background: #1e293b; color: #475569; }
+    .status-problem { background: #450a0a; color: #fca5a5; }
+    .status-partial { background: #431407; color: #fcd34d; }
+
+    .items { display: flex; flex-direction: column; gap: 6px; padding-left: 38px; }
+    .item {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-size: 0.88rem; color: #94a3b8;
+    }
+    .item.done    { color: #cbd5e1; }
+    .item.active  { color: #e2e8f0; }
+
+    .check {
+      flex-shrink: 0; width: 18px; height: 18px; border-radius: 4px;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-top: 1px; font-size: 11px;
+    }
+    .check-done    { background: #166534; color: #86efac; }
+    .check-active  { background: #1e3a8a; border: 1.5px solid #3b82f6; color: transparent; }
+    .check-pending { background: transparent; border: 1.5px solid #334155; color: transparent; }
+
+    .item-note {
+      margin-top: 6px; font-size: 0.78rem; color: #475569;
+      padding-left: 28px; line-height: 1.6;
+    }
+
+    .decision {
+      display: inline-block; margin-left: 8px;
+      font-size: 0.72rem; font-weight: 600;
+      background: #2d1b69; color: #a78bfa;
+      padding: 1px 7px; border-radius: 99px; vertical-align: middle;
+    }
+
+    .divider { border: none; border-top: 1px solid #1e293b; margin: 28px 0; }
+
+    .legend {
+      display: flex; gap: 20px; flex-wrap: wrap;
+      font-size: 0.78rem; color: #475569; margin-top: 40px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-done    { background: #22c55e; }
+    .dot-active  { background: #3b82f6; }
+    .dot-pending { background: #334155; }
+    .dot-problem { background: #ef4444; }
+    .dot-partial { background: #f59e0b; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Docs Review — план реализации</h1>
+    <p>Автоматическая проверка документации: Vale + LLM + MCP-сервер</p>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-label">
+      <span>Прогресс</span>
+      <span>Этапы 1–6 завершены · 7 — тестирование</span>
+    </div>
+    <div class="progress-track"><div class="progress-fill" style="width: 90%;"></div></div>
+  </div>
+
+  <!-- Stage 1 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-done">1</span>
+      <span class="stage-title">Подготовка и исследование</span>
+      <span class="stage-status status-done">Выполнено</span>
+    </div>
+    <div class="items">
+      <div class="item done"><span class="check check-done">✓</span>Изучить подход Elastic docs-actions</div>
+      <div class="item done"><span class="check check-done">✓</span>Аудит репозитория: JSX-компоненты, структура, frontmatter</div>
+      <div class="item done"><span class="check check-done">✓</span>Ответить на уточняющие вопросы (язык, LLM, MCP, стайлгайд)</div>
+      <div class="item done"><span class="check check-done">✓</span>Написать подробный план v2 (docs-review-plan.html)</div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Stage 2 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-done">2</span>
+      <span class="stage-title">Стайлгайд</span>
+      <span class="stage-status status-done">Выполнено</span>
+    </div>
+    <div class="items">
+      <div class="item done">
+        <span class="check check-done">✓</span>
+        Принять архитектурное решение: один файл или несколько
+        <span class="decision">решение: несколько файлов + index.md</span>
+      </div>
+      <div class="item done"><span class="check check-done">✓</span>Оцифровать стайлгайд из PDF (5 разделов)</div>
+      <div class="item done"><span class="check check-done">✓</span>Сохранить в <code>style_guide/</code> (index + 5 MD-файлов)</div>
+    </div>
+    <p class="item-note">Разделы: инструкции · нейтральный тон · выбор слов · абзацы и предложения · ссылки</p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Stage 3 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-done">3</span>
+      <span class="stage-title">Vale: конфигурация и правила</span>
+      <span class="stage-status status-done">Выполнено</span>
+    </div>
+    <div class="items">
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>.vale-ru.ini</code> / <code>.vale-en.ini</code> (раздельные конфиги, TokenIgnores для JSX)</div>
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>styles/Russian/ForbiddenWords.yml</code></div>
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>styles/Russian/Substitutions.yml</code></div>
+      <div class="item done"><span class="check check-done">✓</span>Закоммитить пакеты Microsoft / proselint в репо (обход корп. сети)</div>
+      <div class="item done"><span class="check check-done">✓</span>Исправлены root-cause баги: Vale работает с кириллицей</div>
+    </div>
+    <p class="item-note">
+      <strong>Root cause найден и устранён (два взаимосвязанных бага):</strong><br>
+      1. <code>Substitutions.yml</code> содержал lookahead-паттерны <code>(?!...)</code> — Go RE2 их не поддерживает. Vale генерировал ошибку в stderr.<br>
+      2. Workflow перенаправлял stderr Vale в JSON-файл (<code>2&gt;&amp;1</code>), что делало файл невалидным JSON → merge давал <code>{}</code>.<br>
+      <strong>Исправления:</strong> lookaheads убраны из <code>Substitutions.yml</code> · добавлен <code>nonword: true</code> · stderr Vale теперь в отдельный файл (<code>2&gt; vale.err</code>) · диагностический шаг <code>vale ls-config</code> в workflow.
+    </p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Stage 4 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-done">4</span>
+      <span class="stage-title">GitHub Actions: workflow</span>
+      <span class="stage-status status-done">Выполнено</span>
+    </div>
+    <div class="items">
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>.github/workflows/docs-review.yml</code></div>
+      <div class="item done"><span class="check check-done">✓</span>Триггер по лейблу <code>docs-review</code>, self-hosted Windows runner</div>
+      <div class="item done"><span class="check check-done">✓</span>Health-check MCP-сервера с retry (3 попытки, sleep 10)</div>
+      <div class="item done"><span class="check check-done">✓</span>Concurrency guard, timeout 15 мин, permissions</div>
+      <div class="item done"><span class="check check-done">✓</span>Исправлен <code>stderr Vale 2&gt;&amp;1</code> → <code>2&gt; vale.err</code> (JSON больше не засоряется)</div>
+      <div class="item done"><span class="check check-done">✓</span>Надёжный Python merge JSON (try/except, проверка формата)</div>
+      <div class="item done"><span class="check check-done">✓</span>Обработка <code>workflow_dispatch</code> без PR: input <code>pr_number</code>, graceful exit</div>
+      <div class="item done"><span class="check check-done">✓</span>Диагностический шаг <code>vale ls-config</code> для отладки</div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Stage 5 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-done">5</span>
+      <span class="stage-title">LLM-агент</span>
+      <span class="stage-status status-done">Выполнено</span>
+    </div>
+    <div class="items">
+      <div class="item done"><span class="check check-done">✓</span>Создать <code>.github/scripts/review-agent.py</code></div>
+      <div class="item done"><span class="check check-done">✓</span>Промпт-шаблон (JSON-ответ), поддержка кастомного <code>base_url</code> (корп. LLM)</div>
+      <div class="item done"><span class="check check-done">✓</span>Постинг комментариев: inline + 1 summary — работает корректно</div>
+      <div class="item done"><span class="check check-done">✓</span>Retry-логика: 3 попытки с экспоненциальной задержкой (1s, 2s, 4s)</div>
+      <div class="item done"><span class="check check-done">✓</span>Извлечение JSON из markdown-обёртки (fallback для моделей без строгого JSON-mode)</div>
+      <div class="item done"><span class="check check-done">✓</span>Graceful exit при <code>workflow_dispatch</code> без <code>PR_NUMBER</code></div>
+    </div>
+    <p class="item-note">После исправления Vale данные статического анализа корректно передаются в LLM.</p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Stage 6 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-done">6</span>
+      <span class="stage-title">MCP-сервер</span>
+      <span class="stage-status status-done">Код готов</span>
+    </div>
+    <div class="items">
+      <div class="item done"><span class="check check-done">✓</span>FastAPI-сервер создан в <code>mcp_server/app.py</code> (в этом же репозитории)</div>
+      <div class="item done"><span class="check check-done">✓</span>Эндпоинты: <code>/tools/get_style_guide</code>, <code>/tools/get_forbidden_words</code>, <code>/health</code></div>
+      <div class="item done"><span class="check check-done">✓</span>Авторизация через Bearer-токен (опционально, управляется <code>MCP_API_KEY</code>)</div>
+      <div class="item done"><span class="check check-done">✓</span>Конфиг деплоя <code>render.yaml</code> в корне репозитория</div>
+      <div class="item active"><span class="check check-active">·</span>Деплой на Render.com — выполнить вручную (см. примечание)</div>
+      <div class="item active"><span class="check check-active">·</span>Прописать секреты в GitHub: <code>LLM_API_KEY</code>, <code>MCP_API_KEY</code> · переменные: <code>MCP_SERVER_URL</code>, <code>LLM_MODEL</code>, <code>LLM_BASE_URL</code></div>
+    </div>
+    <p class="item-note">
+      <strong>Деплой на Render.com:</strong> Settings → New Web Service → Connect repo → Render найдёт <code>render.yaml</code> автоматически.
+      В дашборде Render: Environment → добавить <code>MCP_API_KEY</code>.
+      После деплоя: скопировать URL сервиса в GitHub → Settings → Variables → <code>MCP_SERVER_URL</code>.
+      <strong>Без MCP:</strong> агент работает через локальный fallback (файлы <code>style_guide/</code>).
+    </p>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Stage 7 -->
+  <div class="stage">
+    <div class="stage-header">
+      <span class="stage-badge badge-active">7</span>
+      <span class="stage-title">Тестирование end-to-end</span>
+      <span class="stage-status status-active">Готово к тесту</span>
+    </div>
+    <div class="items">
+      <div class="item done"><span class="check check-done">✓</span>Создан тестовый файл <code>docs/ru/test-review.mdx</code> с намеренными нарушениями</div>
+      <div class="item active"><span class="check check-active">·</span>Создать PR: добавить изменения в <code>docs/ru/test-review.mdx</code>, навесить лейбл <code>docs-review</code></div>
+      <div class="item active"><span class="check check-active">·</span>Проверить вывод шага <code>Vale config diagnostics</code> — убедиться что Russian-правила загрузились</div>
+      <div class="item active"><span class="check check-active">·</span>Убедиться что Vale нашёл &gt;0 предупреждений в <code>test-review.mdx</code></div>
+      <div class="item active"><span class="check check-active">·</span>Убедиться что LLM-агент оставил inline-комментарии в PR</div>
+      <div class="item active"><span class="check check-active">·</span>Зафиксировать итоги, скорректировать правила если нужно</div>
+    </div>
+    <p class="item-note">
+      Перед созданием PR убедитесь, что в GitHub настроены секреты и переменные:
+      <code>LLM_API_KEY</code> (Secrets) · <code>LLM_MODEL</code>, <code>LLM_BASE_URL</code> (Variables).
+      MCP опционален — без него агент работает через локальный fallback.
+    </p>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="dot dot-done"></div> Выполнено</div>
+    <div class="legend-item"><div class="dot dot-active"></div> В процессе</div>
+    <div class="legend-item"><div class="dot dot-pending"></div> Ожидает</div>
+    <div class="legend-item"><div class="dot dot-problem"></div> Проблема</div>
+    <div class="legend-item"><div class="dot dot-partial"></div> Частично</div>
+  </div>
+
+</div>
+</body>
+</html>

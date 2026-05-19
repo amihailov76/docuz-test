@@ -22,9 +22,9 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import requests
@@ -281,15 +281,48 @@ def build_user_message(
 
 # ─── OpenAI-совместимый LLM ───────────────────────────────────────────────────
 
+def extract_json_from_response(raw: str) -> dict:
+    """
+    Извлекает JSON из ответа LLM.
+    Обрабатывает три варианта:
+    1. Чистый JSON-объект
+    2. JSON внутри markdown-блока ```json ... ```
+    3. JSON-объект, «утопленный» в тексте
+    """
+    raw = raw.strip()
+    # Прямой парсинг
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Markdown-блок ```json ... ``` или ``` ... ```
+    md_match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", raw)
+    if md_match:
+        try:
+            return json.loads(md_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    # Первый JSON-объект в тексте
+    obj_match = re.search(r"\{[\s\S]+\}", raw)
+    if obj_match:
+        try:
+            return json.loads(obj_match.group(0))
+        except json.JSONDecodeError:
+            pass
+    raise ValueError(f"Не удалось извлечь JSON из ответа LLM (первые 300 символов): {raw[:300]}")
+
+
 def call_llm(
     system: str,
     user: str,
     api_key: str,
     model: str = DEFAULT_MODEL,
     base_url: str | None = None,
+    max_retries: int = 3,
 ) -> dict:
     """
     Вызывает LLM через OpenAI-совместимый API, возвращает распарсенный JSON.
+    При сбое выполняет до max_retries попыток с экспоненциальной задержкой.
 
     base_url — кастомный эндпоинт (например, внутренний прокси или локальный сервер).
                Если None, используется стандартный api.openai.com.
@@ -300,18 +333,32 @@ def call_llm(
         client_kwargs["base_url"] = base_url
 
     client = OpenAI(**client_kwargs)
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.2,
-        max_tokens=4096,
-    )
-    raw = response.choices[0].message.content
-    return json.loads(raw)
+    last_exc: Exception | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.2,
+                max_tokens=4096,
+            )
+            raw = response.choices[0].message.content
+            return extract_json_from_response(raw)
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                wait = 2 ** (attempt - 1)   # 1s, 2s, 4s
+                print(f"[WARN] LLM попытка {attempt}/{max_retries} не удалась: {exc}. Повтор через {wait}с...")
+                time.sleep(wait)
+            else:
+                print(f"[ERROR] LLM: все {max_retries} попытки исчерпаны.")
+
+    raise last_exc  # type: ignore[misc]
 
 # ─── Валидация комментариев ────────────────────────────────────────────────────
 
@@ -369,7 +416,7 @@ def main():
     # Переменные окружения из GitHub Actions
     token      = os.environ["GITHUB_TOKEN"]
     repo       = os.environ["REPO"]
-    pr_number  = os.environ["PR_NUMBER"]
+    pr_number  = os.environ.get("PR_NUMBER", "").strip()
     llm_key    = os.environ["LLM_API_KEY"]
     llm_base   = os.environ.get("LLM_BASE_URL") or None   # None → api.openai.com
     llm_model  = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
@@ -377,6 +424,11 @@ def main():
     mcp_key    = os.environ.get("MCP_API_KEY", "")
     mcp_status = os.environ.get("MCP_STATUS", "unavailable")
     base_ref   = os.environ.get("BASE_REF", "main")
+
+    # ── Ранний выход при workflow_dispatch без PR ─────────────────
+    if not pr_number:
+        print("[INFO] PR_NUMBER не задан (workflow_dispatch без PR). Выход без ошибки.")
+        sys.exit(0)
 
     # ── Читаем список файлов ──────────────────────────────────────
     changed_files = [
