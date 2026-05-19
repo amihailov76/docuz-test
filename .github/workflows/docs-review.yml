@@ -63,25 +63,17 @@ jobs:
 
       - name: Sync Vale packages (Microsoft, proselint)
         run: |
-          echo "Working dir: $(pwd)"
-          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" sync
-          echo "--- styles/ after sync ---"
-          ls styles/ || echo "styles/ not found"
+          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" sync
+          echo "styles/Microsoft: $(ls styles/Microsoft/ 2>/dev/null | wc -l) files"
+          echo "styles/Russian:   $(ls styles/Russian/  2>/dev/null | wc -l) files"
 
       # ── 3b. Vale self-test ────────────────────────────────────────
       - name: Vale self-test
         run: |
-          echo "--- styles/Russian/ ---"
-          ls styles/Russian/ || echo "MISSING"
-          echo "--- styles/Microsoft/ ---"
-          ls styles/Microsoft/ 2>/dev/null | head -5 || echo "MISSING (not synced)"
-          echo "--- styles/proselint/ ---"
-          ls styles/proselint/ 2>/dev/null | head -5 || echo "MISSING (not synced)"
-          echo "--- Vale config check ---"
-          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" ls-config 2>&1 | head -20
-          echo "--- Vale test on synthetic file ---"
+          echo "=== Russian rules test ==="
           echo "Вы должны выполнить настройку системы." > "$RUNNER_TEMP/test_ru.md"
-          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" --output=line "$RUNNER_TEMP/test_ru.md" 2>&1 || true
+          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" --output=line \
+            "$RUNNER_TEMP/test_ru.md" 2>&1 || true
 
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
@@ -118,8 +110,34 @@ jobs:
           cat .vale.ini
           echo "Styles dir:"
           ls styles/Russian/ || echo "No Russian styles dir"
-          "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale.ini" --output=JSON $FILES \
-            > "$RUNNER_TEMP/vale_output.json" 2>&1 || true
+          RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
+          EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ')
+          echo "{}" > "$RUNNER_TEMP/vale_output.json"
+          if [ -n "$RU_FILES" ]; then
+            echo "Running Vale (Russian) on: $RU_FILES"
+            "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-ru.ini" --output=JSON $RU_FILES \
+              > "$RUNNER_TEMP/vale_ru.json" 2>&1 || true
+            cat "$RUNNER_TEMP/vale_ru.json"
+          fi
+          if [ -n "$EN_FILES" ]; then
+            echo "Running Vale (English) on: $EN_FILES"
+            "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" --output=JSON $EN_FILES \
+              > "$RUNNER_TEMP/vale_en.json" 2>&1 || true
+            cat "$RUNNER_TEMP/vale_en.json"
+          fi
+          # Объединяем JSON для агента
+          python -c "
+import json, os
+result = {}
+for f in ['$RUNNER_TEMP/vale_ru.json', '$RUNNER_TEMP/vale_en.json']:
+    if os.path.exists(f):
+        try:
+            data = json.load(open(f))
+            if isinstance(data, dict):
+                result.update(data)
+        except: pass
+print(json.dumps(result))
+" > "$RUNNER_TEMP/vale_output.json" 2>/dev/null || true
           echo "Vale exit code: $?"
           echo "Vale output:"
           cat "$RUNNER_TEMP/vale_output.json"
