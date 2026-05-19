@@ -144,7 +144,6 @@ jobs:
 
       # ── 7b. Debug LLM connectivity ───────────────────────────────
       - name: Debug LLM connection
-        if: steps.changed-files.outputs.has_files == 'true'
         env:
           LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
