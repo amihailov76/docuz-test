@@ -125,19 +125,11 @@ jobs:
               > "$RUNNER_TEMP/vale_en.json" 2>&1 || true
             cat "$RUNNER_TEMP/vale_en.json"
           fi
-          # Объединяем JSON для агента
-          python -c "
-import json, os
-result = {}
-for f in ['$RUNNER_TEMP/vale_ru.json', '$RUNNER_TEMP/vale_en.json']:
-    if os.path.exists(f):
-        try:
-            data = json.load(open(f))
-            if isinstance(data, dict):
-                result.update(data)
-        except: pass
-print(json.dumps(result))
-" > "$RUNNER_TEMP/vale_output.json" 2>/dev/null || true
+          # Объединяем JSON для агента (однострочный python)
+          python -c "import json,os,sys;d={};[d.update(json.load(open(f,encoding='utf-8'))) for f in sys.argv[1:] if os.path.exists(f)];print(json.dumps(d))" \
+            "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
+            > "$RUNNER_TEMP/vale_output.json" 2>/dev/null \
+            || echo "{}" > "$RUNNER_TEMP/vale_output.json"
           echo "Vale exit code: $?"
           echo "Vale output:"
           cat "$RUNNER_TEMP/vale_output.json"
