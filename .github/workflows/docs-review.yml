@@ -52,9 +52,9 @@ jobs:
 
       # ── 3. Vale ──────────────────────────────────────────────────
       - name: Install Vale
-        uses: errata-ai/vale-action@v2
-        with:
-          install-only: true
+        run: |
+          curl -sfL https://install.goreleaser.com/github.com/errata-ai/vale.sh | sh -s -- -b /usr/local/bin
+          vale --version
 
       - name: Sync Vale packages (Microsoft, proselint)
         run: vale sync
