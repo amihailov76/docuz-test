@@ -21,7 +21,7 @@ permissions:
 jobs:
   docs-review:
     if: github.event.label.name == 'docs-review' || github.event_name == 'workflow_dispatch'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     defaults:
@@ -44,10 +44,11 @@ jobs:
       - name: Install Vale
         run: |
           VALE_VERSION="3.14.2"
+          mkdir -p "$RUNNER_TEMP/vale-bin"
           curl -sL --max-time 120 \
-            "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Windows_64-bit.zip" \
-            -o "$RUNNER_TEMP/vale.zip"
-          unzip -o "$RUNNER_TEMP/vale.zip" -d "$RUNNER_TEMP/vale-bin"
+            "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
+            -o "$RUNNER_TEMP/vale.tar.gz"
+          tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP/vale-bin"
           echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/vale-bin/vale" --version
 
@@ -90,7 +91,7 @@ jobs:
           RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
           if [ -n "$RU_FILES" ]; then
             echo "[INFO] Проверяем русские файлы: $RU_FILES"
-            python .github/scripts/ru_linter.py \
+            python3 .github/scripts/ru_linter.py \
               --files $RU_FILES \
               --output "$RUNNER_TEMP/vale_ru.json" \
               --styles-dir "$(pwd)/styles/Russian"
@@ -126,7 +127,7 @@ jobs:
         if: steps.changed-files.outputs.has_files == 'true'
         id: vale
         run: |
-          python - "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
+          python3 - "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
             > "$RUNNER_TEMP/vale_output.json" << 'PYEOF'
           import json, os, sys
           merged = {}
@@ -144,7 +145,7 @@ jobs:
           print(json.dumps(merged))
           PYEOF
 
-          WARN_COUNT=$(python -c "
+          WARN_COUNT=$(python3 -c "
           import json, sys
           try:
               d = json.load(open('$RUNNER_TEMP/vale_output.json'))
@@ -197,6 +198,6 @@ jobs:
           REPO:           ${{ github.repository }}
           BASE_REF:       ${{ github.base_ref || 'main' }}
         run: |
-          python .github/scripts/review-agent.py \
+          python3 .github/scripts/review-agent.py \
             --changed-files "$RUNNER_TEMP/changed_files.txt" \
             --vale-output "$RUNNER_TEMP/vale_output.json"
