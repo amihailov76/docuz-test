@@ -337,16 +337,27 @@ def call_llm(
 
     for attempt in range(1, max_retries + 1):
         try:
-            response = client.chat.completions.create(
+            # Пробуем сначала с json_object (OpenAI и совместимые),
+            # при ошибке 400/422 — повторяем без response_format.
+            call_kwargs: dict = dict(
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user",   "content": user},
                 ],
-                response_format={"type": "json_object"},
                 temperature=0.2,
                 max_tokens=4096,
             )
+            try:
+                response = client.chat.completions.create(
+                    **call_kwargs,
+                    response_format={"type": "json_object"},
+                )
+            except Exception as fmt_exc:
+                # response_format не поддерживается провайдером
+                print(f"[WARN] response_format не поддерживается, повтор без него: {fmt_exc}")
+                response = client.chat.completions.create(**call_kwargs)
+
             raw = response.choices[0].message.content
             return extract_json_from_response(raw)
         except Exception as exc:
@@ -472,13 +483,14 @@ def main():
         result = call_llm(SYSTEM_PROMPT, user_msg, llm_key, model=llm_model, base_url=llm_base)
     except Exception as exc:
         print(f"[ERROR] LLM failed: {exc}", file=sys.stderr)
+        vale_count = sum(len(v) for v in vale_results.values())
         post_summary_only(
             repo, pr_number, token,
-            f"⚠️ Docs Review: не удалось выполнить LLM-анализ ({exc}).\n\n"
-            f"Vale нашёл {sum(len(v) for v in vale_results.values())} предупреждений.\n\n"
+            f"⚠️ **Docs Review**: LLM-анализ не удался (`{type(exc).__name__}: {exc}`).\n\n"
+            f"**Vale** нашёл **{vale_count}** предупреждений:\n\n"
             + vale_text
         )
-        sys.exit(1)
+        sys.exit(0)  # Vale-результаты запощены — workflow не должен падать
 
     # ── Валидируем и постим ───────────────────────────────────────
     raw_comments = result.get("comments", [])
