@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs Review — план масштабирования и воспроизводимости</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1117; color: #e2e8f0; padding: 40px 24px 80px; line-height: 1.6;
+    }
+    .container { max-width: 860px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; font-weight: 700; color: #f8fafc; margin-bottom: 8px; }
+    .subtitle { font-size: 0.9rem; color: #64748b; margin-bottom: 48px; }
+    h2 { font-size: 1.15rem; font-weight: 700; color: #f1f5f9; margin-bottom: 16px; }
+    h3 { font-size: 0.95rem; font-weight: 600; color: #cbd5e1; margin-bottom: 10px; margin-top: 24px; }
+    p { font-size: 0.88rem; color: #94a3b8; margin-bottom: 10px; }
+    code { font-family: "Fira Code", "Cascadia Code", monospace; font-size: 0.82rem;
+           background: #1e293b; color: #a5f3fc; padding: 1px 6px; border-radius: 4px; }
+    .track { margin-bottom: 60px; }
+    .track-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px;
+                    padding-bottom: 16px; border-bottom: 1px solid #1e293b; }
+    .track-num { display: inline-flex; align-items: center; justify-content: center;
+                 width: 32px; height: 32px; border-radius: 50%; font-size: 0.9rem;
+                 font-weight: 700; flex-shrink: 0; }
+    .num-a { background: #1e3a5f; color: #60a5fa; }
+    .num-b { background: #2d1b69; color: #a78bfa; }
+    .track-title { font-size: 1.2rem; font-weight: 700; color: #f8fafc; }
+    .section { background: #131920; border: 1px solid #1e293b; border-radius: 10px;
+               padding: 20px 24px; margin-bottom: 16px; }
+    .section-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+                     letter-spacing: 0.08em; margin-bottom: 14px; }
+    .blue  { color: #60a5fa; }
+    .purple { color: #a78bfa; }
+    .green { color: #4ade80; }
+    .yellow { color: #fbbf24; }
+    .red   { color: #f87171; }
+    .row { display: flex; gap: 10px; margin-bottom: 8px; align-items: flex-start; }
+    .badge { display: inline-flex; align-items: center; flex-shrink: 0; margin-top: 1px;
+             font-size: 0.7rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+    .badge-risk    { background: #450a0a; color: #fca5a5; }
+    .badge-block   { background: #431407; color: #fdba74; }
+    .badge-step    { background: #172554; color: #93c5fd; }
+    .badge-note    { background: #1e293b; color: #94a3b8; }
+    .badge-ok      { background: #14532d; color: #86efac; }
+    .row-text { font-size: 0.87rem; color: #94a3b8; }
+    .row-text strong { color: #cbd5e1; font-weight: 600; }
+    .divider { border: none; border-top: 1px solid #1e293b; margin: 32px 0; }
+    .phase { border-left: 3px solid #1e3a5f; padding-left: 16px; margin-bottom: 20px; }
+    .phase.purple-l { border-color: #2d1b69; }
+    .phase-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: 0.08em; color: #475569; margin-bottom: 6px; }
+    .phase-title { font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin-bottom: 8px; }
+    .steps { display: flex; flex-direction: column; gap: 6px; }
+    .step { font-size: 0.87rem; color: #94a3b8; display: flex; gap: 8px; align-items: flex-start; }
+    .step-n { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+              background: #1e293b; color: #475569; font-size: 0.7rem; font-weight: 700;
+              display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+    .callout { background: #1a1f2e; border: 1px solid #2d3748; border-left: 3px solid #f59e0b;
+               border-radius: 6px; padding: 14px 18px; margin: 16px 0; }
+    .callout p { margin: 0; font-size: 0.86rem; color: #94a3b8; }
+    .callout strong { color: #fbbf24; }
+    .dep-box { background: #0c1a0c; border: 1px solid #166534; border-radius: 8px;
+               padding: 16px 20px; margin: 24px 0; }
+    .dep-box h3 { color: #4ade80; margin-top: 0; }
+    .arch { background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+            padding: 16px 20px; margin: 12px 0; font-family: "Fira Code", monospace;
+            font-size: 0.78rem; color: #64748b; line-height: 1.8; }
+    .arch .h  { color: #93c5fd; }
+    .arch .f  { color: #a5f3fc; }
+    .arch .c  { color: #86efac; }
+    .arch .d  { color: #94a3b8; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 12px 0; }
+    th { text-align: left; color: #475569; font-size: 0.75rem; text-transform: uppercase;
+         letter-spacing: 0.06em; padding: 8px 12px; border-bottom: 1px solid #1e293b; }
+    td { padding: 10px 12px; border-bottom: 1px solid #131920; color: #94a3b8; vertical-align: top; }
+    td strong { color: #cbd5e1; }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Масштабирование и воспроизводимость</h1>
+  <p class="subtitle">Анализ двух треков с ограничениями и планом реализации</p>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       DEPENDENCY NOTE
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="dep-box">
+    <h3>Зависимость между треками</h3>
+    <p style="font-size:0.87rem;color:#94a3b8;margin-top:8px;">
+      Оба трека упираются в одну и ту же проблему: <strong style="color:#86efac;">self-hosted раннер на Windows</strong>.
+      Он непредсказуемо падает, привязан к конкретной машине и делает воркфлоу нерабочим для коллег-форкеров
+      и неудобным при масштабировании на несколько репозиториев.
+      Переход на <strong style="color:#86efac;">GitHub-hosted runner (ubuntu-latest)</strong> — общее решение для обоих треков.
+      Его стоит сделать первым, до начала любого другого трека.
+    </p>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       TRACK A
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="track">
+    <div class="track-header">
+      <span class="track-num num-a">A</span>
+      <span class="track-title">Масштабирование: reusable workflows</span>
+    </div>
+
+    <!-- Идея -->
+    <div class="section">
+      <div class="section-title blue">Суть подхода</div>
+      <p>Создаётся служебный репозиторий (<code>docs-automation</code>), который содержит
+      весь механизм проверки: воркфлоу, Python-скрипты, Vale-конфиги. Продуктовые репозитории
+      хранят только минимальный «вызывающий» воркфлоу — 10–15 строк. Всё остальное
+      берётся из служебного репо.</p>
+      <p>Правила линтера и стайлгайд уже живут на MCP-сервере и доступны всем репозиториям без
+      каких-либо изменений.</p>
+    </div>
+
+    <!-- Структура -->
+    <div class="section">
+      <div class="section-title blue">Структура репозиториев</div>
+      <h3>Служебный репозиторий <code>docs-automation</code></h3>
+      <div class="arch">
+        <span class="h">docs-automation/</span><br>
+        &nbsp;&nbsp;<span class="h">.github/workflows/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">docs-review-reusable.yml</span>&nbsp;&nbsp;<span class="d"># reusable workflow</span><br>
+        &nbsp;&nbsp;<span class="h">scripts/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">review-agent.py</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">ru_linter.py</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">requirements.txt</span><br>
+        &nbsp;&nbsp;<span class="h">vale-config/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">.vale-ru.ini</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">.vale-en.ini</span><br>
+        &nbsp;&nbsp;<span class="h">styles/Russian/</span>&nbsp;&nbsp;<span class="d"># fallback, основное — MCP</span>
+      </div>
+      <h3>Продуктовый репозиторий (минимальный)</h3>
+      <div class="arch">
+        <span class="h">product-docs/</span><br>
+        &nbsp;&nbsp;<span class="h">.github/workflows/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="f">docs-review.yml</span>&nbsp;&nbsp;<span class="d"># 10 строк — вызов reusable workflow</span><br>
+        &nbsp;&nbsp;<span class="h">docs/</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="h">ru/</span>&nbsp;&nbsp;<span class="c">*.mdx</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="h">en/</span>&nbsp;&nbsp;<span class="c">*.mdx</span>
+      </div>
+    </div>
+
+    <!-- Сценарий работы -->
+    <div class="section">
+      <div class="section-title blue">Сценарий работы</div>
+      <div class="phase">
+        <div class="phase-label">Этап 1 — триггер</div>
+        <div class="phase-title">Писатель вешает лейбл <code>docs-review</code> на PR в продуктовом репо</div>
+        <p>Короткий caller-воркфлоу вызывает reusable workflow из <code>docs-automation</code>.
+        Секреты (<code>LLM_API_KEY</code>, <code>MCP_API_KEY</code>) передаются через org-level secrets — настраиваются один раз для всей организации.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-label">Этап 2 — подготовка окружения</div>
+        <div class="phase-title">Reusable workflow клонирует оба репозитория</div>
+        <p>Сначала — продуктовый репо (для docs-файлов и диффа PR), затем — <code>docs-automation</code>
+        в подпапку (для Python-скриптов и Vale-конфигов). Vale скачивается под Linux.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-label">Этап 3 — проверка</div>
+        <div class="phase-title">Линтер и LLM-агент работают штатно</div>
+        <p>Линтер берёт правила с MCP-сервера. LLM-агент берёт стайлгайд с MCP-сервера.
+        Скрипты — из подпапки <code>docs-automation</code>. Результат — комментарии в PR продуктового репо.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-label">Акторы</div>
+        <div class="phase-title">Кто что делает при подключении нового репозитория</div>
+        <table>
+          <tr><th>Кто</th><th>Что делает</th><th>Сложность</th></tr>
+          <tr><td><strong>Администратор</strong></td><td>Добавляет org-level secrets один раз для всей организации</td><td>Один раз</td></tr>
+          <tr><td><strong>Владелец продуктового репо</strong></td><td>Копирует 10-строчный caller-воркфлоу, создаёт лейбл <code>docs-review</code></td><td>15 минут</td></tr>
+          <tr><td><strong>Писатель</strong></td><td>Вешает лейбл на PR — как обычно</td><td>Без изменений</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Ограничения -->
+    <div class="section">
+      <div class="section-title blue">Ограничения и риски</div>
+      <div class="row">
+        <span class="badge badge-block">Blocker</span>
+        <span class="row-text"><strong>self-hosted runner на Windows.</strong>
+        Reusable workflow наследует раннер из служебного репо. Если там <code>self-hosted</code> — все продуктовые репо зависят от одной машины. Решение: перейти на <code>ubuntu-latest</code> перед реализацией трека.</span>
+      </div>
+      <div class="row">
+        <span class="badge badge-risk">Риск</span>
+        <span class="row-text"><strong>Доступность служебного репозитория.</strong>
+        Если <code>docs-automation</code> приватный, каждый продуктовый репо должен иметь право клонировать его. Для публичного — проблемы нет.</span>
+      </div>
+      <div class="row">
+        <span class="badge badge-note">Важно</span>
+        <span class="row-text"><strong>Структура docs/ должна совпадать.</strong>
+        Текущий воркфлоу ищет файлы по шаблону <code>docs/(ru|en)/*.mdx</code>.
+        Если в продуктовом репо структура другая — нужен <code>input</code>-параметр в reusable workflow.</span>
+      </div>
+    </div>
+
+    <!-- План -->
+    <div class="section">
+      <div class="section-title blue">Фазы реализации</div>
+      <div class="phase">
+        <div class="phase-label">Фаза A-0 — prerequisite (общая для обоих треков)</div>
+        <div class="phase-title">Перейти на GitHub-hosted runner</div>
+        <div class="steps">
+          <div class="step"><span class="step-n">1</span><span>Заменить <code>runs-on: self-hosted</code> на <code>runs-on: ubuntu-latest</code></span></div>
+          <div class="step"><span class="step-n">2</span><span>Поменять URL скачивания Vale: Windows → Linux (<code>Linux_64-bit.tar.gz</code>)</span></div>
+          <div class="step"><span class="step-n">3</span><span>Проверить воркфлоу на тестовом PR</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-label">Фаза A-1</div>
+        <div class="phase-title">Создать служебный репозиторий</div>
+        <div class="steps">
+          <div class="step"><span class="step-n">1</span><span>Создать <code>docs-automation</code>, перенести скрипты и конфиги</span></div>
+          <div class="step"><span class="step-n">2</span><span>Адаптировать воркфлоу: добавить <code>on: workflow_call</code>, параметры <code>inputs</code> для пути к docs</span></div>
+          <div class="step"><span class="step-n">3</span><span>Добавить шаг клонирования <code>docs-automation</code> внутри reusable workflow</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div class="phase-label">Фаза A-2</div>
+        <div class="phase-title">Подключить первый продуктовый репозиторий</div>
+        <div class="steps">
+          <div class="step"><span class="step-n">1</span><span>Перенести org-level secrets в GitHub Organization Settings</span></div>
+          <div class="step"><span class="step-n">2</span><span>Добавить 10-строчный caller-воркфлоу в продуктовый репо</span></div>
+          <div class="step"><span class="step-n">3</span><span>Проверить сквозной прогон</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       TRACK B
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="track">
+    <div class="track-header">
+      <span class="track-num num-b">B</span>
+      <span class="track-title">Воспроизводимость: репо для форка</span>
+    </div>
+
+    <!-- Суть -->
+    <div class="section">
+      <div class="section-title purple">Целевой сценарий</div>
+      <p>Коллега-писатель находит репозиторий, делает форк и в течение разумного времени
+      получает работающую систему проверки документации — без звонков тебе, без настройки
+      твоей машины, без доступа к твоим аккаунтам.</p>
+    </div>
+
+    <!-- Узкие места -->
+    <div class="section">
+      <div class="section-title purple">Узкие места — анализ</div>
+
+      <div class="row" style="margin-bottom:14px;">
+        <span class="badge badge-block">Blocker</span>
+        <span class="row-text"><strong>Self-hosted runner на твоей машине.</strong>
+        Форкнувший пользователь не имеет доступа к твоему раннеру — воркфлоу зависнет в очереди навсегда.
+        Единственное решение: <code>ubuntu-latest</code>. GitHub-hosted runners бесплатны для публичных репо
+        и тратят minutes для приватных (2000 минут/месяц бесплатно на Free-тарифе).</span>
+      </div>
+
+      <div class="row" style="margin-bottom:14px;">
+        <span class="badge badge-risk">Риск</span>
+        <span class="row-text"><strong>MCP-сервер зарегистрирован на твою учётку Render.</strong>
+        Форкнувший не сможет использовать твой сервер (и не должен: это твои правила, твой аккаунт).
+        Но система уже умеет работать без MCP — через локальный fallback.
+        Решение: документировать два режима. Базовый (без MCP, всё в репо) — работает из коробки.
+        Полный (с MCP) — требует деплоя своего сервера.</span>
+      </div>
+
+      <div class="row" style="margin-bottom:14px;">
+        <span class="badge badge-risk">Риск</span>
+        <span class="row-text"><strong>LLM API ключ.</strong>
+        Это неизбежно: у каждого пользователя должен быть свой ключ OpenAI или другого провайдера.
+        Решение: чёткая документация, ссылки, объяснение что делать если ключа нет
+        (system работает без LLM — только линтер).</span>
+      </div>
+
+      <div class="row" style="margin-bottom:14px;">
+        <span class="badge badge-note">Важно</span>
+        <span class="row-text"><strong>Тестовые файлы в корне репо.</strong>
+        <code>test_cyrillic.md</code>, <code>test_vale.md</code>, <code>test_vale.mdx</code> — артефакты разработки,
+        вводят в заблуждение. Убрать или добавить в <code>.gitignore</code>.</span>
+      </div>
+
+      <div class="row">
+        <span class="badge badge-ok">Уже OK</span>
+        <span class="row-text"><strong>Fallback везде.</strong>
+        Линтер, LLM-агент, MCP — все компоненты деградируют gracefully.
+        Если чего-то нет — работает без него. Это хорошая база для воспроизводимости.</span>
+      </div>
+    </div>
+
+    <!-- Режимы работы -->
+    <div class="section">
+      <div class="section-title purple">Два режима после форка</div>
+      <table>
+        <tr>
+          <th>Режим</th>
+          <th>Что нужно настроить</th>
+          <th>Что работает</th>
+        </tr>
+        <tr>
+          <td><strong>Базовый</strong><br><span style="font-size:0.78rem;color:#475569;">«Просто проверить что работает»</span></td>
+          <td>Только <code>LLM_API_KEY</code> в GitHub Secrets</td>
+          <td>Линтер по локальным правилам + LLM по локальному стайлгайду</td>
+        </tr>
+        <tr>
+          <td><strong>Полный</strong><br><span style="font-size:0.78rem;color:#475569;">«Хочу MCP-сервер»</span></td>
+          <td><code>LLM_API_KEY</code> + деплой своего MCP на Render + <code>MCP_SERVER_URL</code>, <code>MCP_API_KEY</code></td>
+          <td>Всё: линтер и LLM берут данные с центрального сервера</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Документация -->
+    <div class="section">
+      <div class="section-title purple">Структура документации</div>
+      <p>Документация должна покрывать два уровня: «что делать» (для писателей) и «как устроено» (для тех, кто хочет настроить или расширить).</p>
+      <table>
+        <tr><th>Файл</th><th>Аудитория</th><th>Содержание</th></tr>
+        <tr>
+          <td><code>README.md</code></td>
+          <td>Все</td>
+          <td>Обзор: что делает репозиторий, как запустить проверку (лейбл на PR), ссылки на остальные доки</td>
+        </tr>
+        <tr>
+          <td><code>docs/SETUP.md</code></td>
+          <td>Кто форкает</td>
+          <td>Пошаговая настройка: форк → секрет → тест. Базовый и полный режим.</td>
+        </tr>
+        <tr>
+          <td><code>docs/HOW-IT-WORKS.md</code></td>
+          <td>Любопытные писатели</td>
+          <td>Архитектура пайплайна: линтер, Vale, LLM, MCP. Что происходит после лейбла.</td>
+        </tr>
+        <tr>
+          <td><code>docs/CUSTOMIZATION.md</code></td>
+          <td>Продвинутые пользователи</td>
+          <td>Как редактировать правила линтера, стайлгайд, модель LLM, структуру папок</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Фазы -->
+    <div class="section">
+      <div class="section-title purple">Фазы реализации</div>
+      <div class="phase purple-l">
+        <div class="phase-label">Фаза B-0 — prerequisite (общая)</div>
+        <div class="phase-title">Перейти на GitHub-hosted runner</div>
+        <p style="font-size:0.85rem;">Та же задача, что и в треке A. Выполняется один раз — решает проблему для обоих треков.</p>
+      </div>
+      <div class="phase purple-l">
+        <div class="phase-label">Фаза B-1</div>
+        <div class="phase-title">Починить воспроизводимость «из коробки»</div>
+        <div class="steps">
+          <div class="step"><span class="step-n">1</span><span>Убрать тестовые файлы из корня (<code>test_*.md</code>, <code>test_*.mdx</code>)</span></div>
+          <div class="step"><span class="step-n">2</span><span>Убедиться, что при отсутствии <code>MCP_SERVER_URL</code> система корректно падает на fallback (уже сделано, но стоит перепроверить)</span></div>
+          <div class="step"><span class="step-n">3</span><span>Добавить <code>.env.example</code> или секцию в README со списком всех переменных и что они означают</span></div>
+        </div>
+      </div>
+      <div class="phase purple-l">
+        <div class="phase-label">Фаза B-2</div>
+        <div class="phase-title">Написать документацию</div>
+        <div class="steps">
+          <div class="step"><span class="step-n">1</span><span><code>README.md</code> — обзор и быстрый старт</span></div>
+          <div class="step"><span class="step-n">2</span><span><code>docs/SETUP.md</code> — пошаговая настройка после форка</span></div>
+          <div class="step"><span class="step-n">3</span><span><code>docs/HOW-IT-WORKS.md</code> — архитектура для любопытных</span></div>
+          <div class="step"><span class="step-n">4</span><span><code>docs/CUSTOMIZATION.md</code> — как менять правила и стайлгайд</span></div>
+        </div>
+      </div>
+      <div class="phase purple-l">
+        <div class="phase-label">Фаза B-3</div>
+        <div class="phase-title">Финальная проверка воспроизводимости</div>
+        <div class="steps">
+          <div class="step"><span class="step-n">1</span><span>Сделать форк в другой GitHub-аккаунт</span></div>
+          <div class="step"><span class="step-n">2</span><span>Пройти по <code>SETUP.md</code> с нуля, добавить только <code>LLM_API_KEY</code></span></div>
+          <div class="step"><span class="step-n">3</span><span>Создать тестовый PR, убедиться что комментарии появляются</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SUMMARY
+  ═══════════════════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title green">Рекомендуемый порядок</div>
+    <table>
+      <tr><th>#</th><th>Задача</th><th>Трек</th><th>Оценка</th></tr>
+      <tr>
+        <td>1</td>
+        <td><strong>Перейти на ubuntu-latest</strong> — заменить runner и Vale binary URL</td>
+        <td>Оба</td>
+        <td>~1 час</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><strong>Убрать тестовые файлы</strong>, проверить fallback без MCP-переменных</td>
+        <td>B</td>
+        <td>~30 мин</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><strong>Написать документацию</strong> (README + SETUP + HOW-IT-WORKS + CUSTOMIZATION)</td>
+        <td>B</td>
+        <td>~4–6 часов</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td><strong>Финальная проверка воспроизводимости</strong> (форк в другой аккаунт)</td>
+        <td>B</td>
+        <td>~1 час</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><strong>Создать docs-automation, адаптировать reusable workflow</strong></td>
+        <td>A</td>
+        <td>~3–4 часа</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td><strong>Подключить первый продуктовый репо</strong>, перенести секреты на org-level</td>
+        <td>A</td>
+        <td>~2 часа</td>
+      </tr>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,41 +1,62 @@
-# Website
+# docuz-test
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+Учебный и референсный репозиторий для технических писателей, работающих с документацией в [Docusaurus](https://docusaurus.io/).
 
-## Installation
+Помимо примеров документации на русском и английском языках, репозиторий содержит готовый пайплайн автоматической проверки документации при создании Pull Request.
 
-```bash
-yarn
+---
+
+## Что делает пайплайн проверки
+
+Когда автор вешает лейбл `docs-review` на Pull Request, автоматически запускается проверка изменённых файлов:
+
+1. **Python-линтер** проверяет русские `.mdx`-файлы по словарным правилам: запрещённые слова, канцеляризмы, директивные конструкции.
+2. **Vale** проверяет английские `.mdx`-файлы по стилистическим правилам.
+3. **LLM-агент** читает изменённые файлы целиком, сверяет со стайлгайдом и оставляет в PR конкретные inline-комментарии с объяснениями.
+
+Автор получает замечания прямо в интерфейсе PR — без ручного запуска инструментов и ожидания ревью от коллег.
+
+---
+
+## Структура репозитория
+
+```
+├── docs/
+│   ├── ru/          # Документация на русском языке
+│   └── en/          # Документация на английском языке
+├── style_guide/     # Стайлгайд для LLM-агента (5 разделов)
+├── styles/Russian/  # Правила для Python-линтера (YAML)
+├── mcp_server/      # MCP-сервер (FastAPI) — централизованное хранение правил
+├── .github/
+│   ├── workflows/   # GitHub Actions воркфлоу
+│   └── scripts/     # Python-скрипты: линтер и LLM-агент
+├── SETUP.md         # Инструкция по настройке после форка
+└── render.yaml      # Конфигурация деплоя MCP-сервера на Render.com
 ```
 
-## Local Development
+---
 
-```bash
-yarn start
-```
+## Быстрый старт
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Если хотите использовать пайплайн в своём репозитории:
 
-## Build
+1. Сделайте форк этого репозитория.
+2. Прочитайте **[SETUP.md](./SETUP.md)** — там пошаговые инструкции для двух вариантов запуска.
+3. Создайте лейбл `docs-review` в вашем репозитории.
+4. Откройте тестовый PR, повесьте лейбл — и посмотрите как работает система.
 
-```bash
-yarn build
-```
+### Варианты запуска
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+| Вариант | Runner | LLM | Когда выбирать |
+|---|---|---|---|
+| **A** | Self-hosted (ваша машина) | Корпоративный или публичный | Конфиденциальные данные, корп. LLM |
+| **B** | GitHub-hosted (облако) | Публичный API (OpenAI и др.) | Быстрый старт, нет ограничений на данные |
 
-## Deployment
+Подробные инструкции для каждого варианта — в [SETUP.md](./SETUP.md).
 
-Using SSH:
+---
 
-```bash
-USE_SSH=true yarn deploy
-```
+## Как работает автоматизация
 
-Not using SSH:
+Подробное описание архитектуры пайплайна — в [HOW-IT-WORKS.md](./HOW-IT-WORKS.md) *(в разработке)*.
 
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
