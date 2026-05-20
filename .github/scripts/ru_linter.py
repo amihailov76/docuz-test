@@ -132,6 +132,75 @@ def load_rules(styles_dir):
 
 
 # ---------------------------------------------------------------------------
+# MCP rule loading
+# ---------------------------------------------------------------------------
+
+def fetch_rules_from_mcp(mcp_url, mcp_key, timeout=10):
+    """
+    Fetch YAML rule contents from MCP server's /tools/get_forbidden_words endpoint.
+    Returns dict {rule_stem: yaml_content_str} or None on failure.
+    """
+    import urllib.request
+    import urllib.error
+
+    url = f"{mcp_url}/tools/get_forbidden_words"
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {mcp_key}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            rules = data.get("rules", {})
+            if not isinstance(rules, dict):
+                raise ValueError("unexpected response shape")
+            return rules
+    except Exception as exc:
+        print(f"[WARN] MCP fetch failed ({exc}), falling back to local rules.", file=sys.stderr)
+        return None
+
+
+def load_rules_from_mcp_data(rules_data):
+    """
+    Parse rules from MCP response dict {stem: yaml_content}.
+    Identical parsing logic to load_rules(), but from in-memory strings.
+    """
+    rules = []
+    for stem, content in sorted(rules_data.items()):
+        try:
+            data = yaml.safe_load(content)
+        except Exception as exc:
+            print(f"[WARN] Could not parse MCP rule '{stem}': {exc}", file=sys.stderr)
+            continue
+
+        if not data or data.get("extends") != "existence":
+            continue
+        raw_patterns = data.get("raw") or []
+        raw_hints    = data.get("raw_hints") or []
+        if not raw_patterns:
+            continue
+
+        compiled = []
+        for i, pat in enumerate(raw_patterns):
+            hint = raw_hints[i] if i < len(raw_hints) else ""
+            try:
+                compiled.append((re.compile(pat, re.IGNORECASE | re.UNICODE), hint))
+            except re.error as exc:
+                print(f"[WARN] MCP rule '{stem}': bad pattern {pat!r}: {exc}", file=sys.stderr)
+
+        if compiled:
+            rules.append({
+                "name":     f"Russian.{stem}",
+                "message":  data.get("message", "Style violation: \"%s\"."),
+                "severity": data.get("level", "warning"),
+                "link":     data.get("link", ""),
+                "patterns": compiled,
+            })
+
+    return rules
+
+
+# ---------------------------------------------------------------------------
 # Single-file linting
 # ---------------------------------------------------------------------------
 
@@ -196,16 +265,29 @@ def main():
                         help="Path to Russian YAML rules directory")
     args = parser.parse_args()
 
-    styles_dir = Path(args.styles_dir)
-    if not styles_dir.exists():
-        print(f"[ERROR] Styles dir not found: {styles_dir}", file=sys.stderr)
-        sys.exit(1)
+    # Try MCP server first; fall back to local styles-dir.
+    mcp_url = os.environ.get("MCP_SERVER_URL", "").strip()
+    mcp_key = os.environ.get("MCP_API_KEY", "").strip()
 
-    rules = load_rules(styles_dir)
-    if not rules:
-        print("[WARN] No rules loaded - all files will have zero findings.", file=sys.stderr)
-    else:
-        print(f"[INFO] Loaded {len(rules)} rule file(s): {[r['name'] for r in rules]}")
+    rules = None
+    if mcp_url and mcp_key:
+        print(f"[INFO] Fetching rules from MCP server: {mcp_url}")
+        mcp_data = fetch_rules_from_mcp(mcp_url, mcp_key)
+        if mcp_data:
+            rules = load_rules_from_mcp_data(mcp_data)
+            print(f"[INFO] Loaded {len(rules)} rule(s) from MCP: {[r['name'] for r in rules]}")
+
+    if rules is None:
+        print("[INFO] Using local rules from disk.")
+        styles_dir = Path(args.styles_dir)
+        if not styles_dir.exists():
+            print(f"[ERROR] Styles dir not found: {styles_dir}", file=sys.stderr)
+            sys.exit(1)
+        rules = load_rules(styles_dir)
+        if not rules:
+            print("[WARN] No rules loaded - all files will have zero findings.", file=sys.stderr)
+        else:
+            print(f"[INFO] Loaded {len(rules)} rule file(s): {[r['name'] for r in rules]}")
 
     results = {}
     total = 0

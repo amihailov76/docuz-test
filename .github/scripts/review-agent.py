@@ -37,6 +37,14 @@ MAX_FILE_CHARS    = 30_000      # per-file content guard (skip oversized files)
 MCP_TIMEOUT       = 10          # seconds per MCP request
 STYLE_GUIDE_DIR   = Path(__file__).parent.parent.parent / "style_guide"
 
+# Mirrors the mapping in mcp_server/app.py.
+# Maps linter rule names to style guide section file stems.
+RULE_SECTION_MAP: dict[str, list[str]] = {
+    "Russian.WordChoice":    ["03_word_choice"],
+    "Russian.Substitutions": ["01_instructions", "02_neutral_tone"],
+}
+ENGLISH_SECTIONS: list[str] = ["04_sentences", "05_links"]
+
 # ---------------------------------------------------------------------------
 # GitHub API
 # ---------------------------------------------------------------------------
@@ -92,7 +100,8 @@ def post_summary_only(repo, pr_number, token, summary):
 # ---------------------------------------------------------------------------
 
 def fetch_style_guide_mcp(mcp_url, mcp_key, section=None):
-    params = {"section": section} if section else {}
+    """Fetch full style guide from MCP server (all sections)."""
+    params: dict[str, str] = {"section": section} if section else {}
     resp = requests.get(
         f"{mcp_url}/tools/get_style_guide",
         headers={"Authorization": f"Bearer {mcp_key}"},
@@ -109,24 +118,24 @@ def fetch_style_guide_mcp(mcp_url, mcp_key, section=None):
 
 
 def load_style_guide_local():
-    parts = []
+    """Load full style guide from local files."""
     if not STYLE_GUIDE_DIR.exists():
         return "(style guide unavailable)"
-    for md in sorted(STYLE_GUIDE_DIR.glob("0*.md")):
-        parts.append(md.read_text(encoding="utf-8"))
+    parts = [md.read_text(encoding="utf-8") for md in sorted(STYLE_GUIDE_DIR.glob("0*.md"))]
     return "\n\n---\n\n".join(parts) if parts else "(style guide empty)"
 
 
 def get_style_guide(mcp_status, mcp_url, mcp_key):
+    """Load full style guide from MCP server or local fallback."""
     if mcp_status == "ok" and mcp_url and mcp_key:
         try:
             guide = fetch_style_guide_mcp(mcp_url, mcp_key)
-            print("[OK] Style guide loaded from MCP server.")
+            print("[OK] Style guide loaded from MCP server (all sections).")
             return guide
         except Exception as exc:
             print(f"[WARN] MCP fetch failed ({exc}), using local fallback.")
     else:
-        print("[INFO] MCP unavailable, using local style guide.")
+        print("[INFO] MCP unavailable, using local style guide (all sections).")
     return load_style_guide_local()
 
 
@@ -505,6 +514,20 @@ def main():
     linter_count   = sum(len(v) for v in linter_results.values())
     print(f"[INFO] Linter findings: {linter_count}")
 
+    # Which linter rules fired? Used for section-based style guide delivery.
+    fired_rules: set[str] = set()
+    for _fp, _alerts in linter_results.items():
+        for _a in _alerts:
+            _r = _a.get("rule", "")
+            if _r:
+                fired_rules.add(_r)
+    if fired_rules:
+        print(f"[INFO] Rules fired: {chr(123)}{chr(39)}{chr(39).join(sorted(fired_rules))}{chr(39)}{chr(125)}")
+    else:
+        print("[INFO] No linter rules fired -- loading full style guide.")
+
+    # fired_rules logged above; section filtering disabled — full guide always safer.
+    # When style_guide grows past MAX_GUIDE, revisit RULE_SECTION_MAP filtering.
     style_guide = get_style_guide(mcp_status, mcp_url, mcp_key)
 
     print("[INFO] Reading full file contents...")

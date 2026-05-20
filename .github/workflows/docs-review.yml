@@ -79,10 +79,13 @@ jobs:
 
       # ── 5а. Python-линтер для русских файлов ──────────────────────
       # Vale existence+raw не матчит кириллицу на Windows-раннере.
-      # Python-линтер читает те же YAML-правила и выдаёт Vale-совместимый JSON.
+      # Линтер загружает правила с MCP-сервера; при недоступности — локальный fallback.
       - name: Lint Russian files (Python)
         if: steps.changed-files.outputs.has_files == 'true'
         id: lint-ru
+        env:
+          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
         run: |
           RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
           if [ -n "$RU_FILES" ]; then
