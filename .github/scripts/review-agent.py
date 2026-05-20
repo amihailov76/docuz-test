@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Docs Review Agent
 =================
-Читает diff PR + Vale JSON, загружает стайлгайд через MCP-сервер
-(или fallback на локальные файлы), вызывает LLM и постит
-inline-комментарии + сводное резюме в GitHub PR Review.
+Reads PR diff + linter JSON, loads style guide via MCP server
+(or local fallback), calls LLM and posts inline comments + summary
+in a GitHub PR Review.
 
-Переменные окружения (LLM):
-    LLM_API_KEY   — API-ключ (обязательно)
-    LLM_BASE_URL  — базовый URL для OpenAI-совместимого API
-                    (если не задан — используется api.openai.com)
-    LLM_MODEL     — имя модели (по умолчанию: gpt-4o-mini)
-
-Использование (вызывается из GitHub Actions):
-    python3 review-agent.py \
-        --changed-files /tmp/changed_files.txt \
-        --vale-output   /tmp/vale_output.json
+Env vars (LLM):
+    LLM_API_KEY   -- API key (required)
+    LLM_BASE_URL  -- base URL for OpenAI-compatible API
+    LLM_MODEL     -- model name (default: gpt-4o-mini)
 """
 
 import argparse
@@ -30,18 +25,22 @@ from pathlib import Path
 import requests
 from openai import OpenAI
 
-# ─── Константы ────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-DEFAULT_MODEL     = "gpt-4o-mini"   # используется если LLM_MODEL не задан
-MAX_INLINE        = 20          # максимум inline-комментариев
-MAX_FILES         = 10          # максимум файлов в одном запуске
-MAX_DIFF_CHARS    = 60_000      # обрезаем diff до этого размера
-MCP_TIMEOUT       = 10          # секунд на запрос к MCP
+DEFAULT_MODEL     = "gpt-4o-mini"
+MAX_INLINE        = 20          # max inline comments
+MAX_FILES         = 10          # max files per run
+MAX_DIFF_CHARS    = 60_000      # truncate diff to this size
+MCP_TIMEOUT       = 10          # seconds per MCP request
 STYLE_GUIDE_DIR   = Path(__file__).parent.parent.parent / "style_guide"
 
-# ─── GitHub API ───────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# GitHub API
+# ---------------------------------------------------------------------------
 
-def gh_headers(token: str) -> dict:
+def gh_headers(token):
     return {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -49,8 +48,7 @@ def gh_headers(token: str) -> dict:
     }
 
 
-def get_pr_diff(repo: str, pr_number: str, token: str) -> str:
-    """Возвращает unified diff PR как строку."""
+def get_pr_diff(repo, pr_number, token):
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
     resp = requests.get(
         url,
@@ -61,26 +59,17 @@ def get_pr_diff(repo: str, pr_number: str, token: str) -> str:
     return resp.text
 
 
-def post_review(
-    repo: str,
-    pr_number: str,
-    token: str,
-    comments: list[dict],
-    summary: str,
-) -> None:
-    """
-    Постит GitHub PR Review с типом COMMENT (никогда REQUEST_CHANGES).
-    comments: [{"path": str, "line": int, "body": str}]
-    """
+def post_review(repo, pr_number, token, comments, summary):
+    """Post a GitHub PR Review (COMMENT type, never REQUEST_CHANGES)."""
     url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
     payload = {
         "body": summary,
-        "event": "COMMENT",          # только COMMENT, не REQUEST_CHANGES
+        "event": "COMMENT",
         "comments": [
             {
                 "path": c["path"],
                 "line": c["line"],
-                "side": "RIGHT",      # строка в новой версии файла
+                "side": "RIGHT",
                 "body": c["body"],
             }
             for c in comments
@@ -93,14 +82,15 @@ def post_review(
     print(f"[OK] Review posted with {len(comments)} inline comment(s).")
 
 
-def post_summary_only(repo: str, pr_number: str, token: str, summary: str) -> None:
-    """Постит только сводное резюме без inline-комментариев."""
+def post_summary_only(repo, pr_number, token, summary):
     post_review(repo, pr_number, token, [], summary)
 
-# ─── MCP / Стайлгайд ──────────────────────────────────────────────────────────
 
-def fetch_style_guide_mcp(mcp_url: str, mcp_key: str, section: str | None = None) -> str:
-    """Запрашивает стайлгайд у MCP-сервера."""
+# ---------------------------------------------------------------------------
+# MCP / Style guide
+# ---------------------------------------------------------------------------
+
+def fetch_style_guide_mcp(mcp_url, mcp_key, section=None):
     params = {"section": section} if section else {}
     resp = requests.get(
         f"{mcp_url}/tools/get_style_guide",
@@ -110,7 +100,6 @@ def fetch_style_guide_mcp(mcp_url: str, mcp_key: str, section: str | None = None
     )
     resp.raise_for_status()
     data = resp.json()
-    # MCP возвращает {"content": "..."} или {"sections": {...}}
     if "content" in data:
         return data["content"]
     if "sections" in data:
@@ -118,18 +107,16 @@ def fetch_style_guide_mcp(mcp_url: str, mcp_key: str, section: str | None = None
     return json.dumps(data)
 
 
-def load_style_guide_local() -> str:
-    """Fallback: читает локальные MD-файлы стайлгайда."""
+def load_style_guide_local():
     parts = []
     if not STYLE_GUIDE_DIR.exists():
-        return "(стайлгайд недоступен)"
+        return "(style guide unavailable)"
     for md in sorted(STYLE_GUIDE_DIR.glob("0*.md")):
         parts.append(md.read_text(encoding="utf-8"))
-    return "\n\n---\n\n".join(parts) if parts else "(стайлгайд пуст)"
+    return "\n\n---\n\n".join(parts) if parts else "(style guide empty)"
 
 
-def get_style_guide(mcp_status: str, mcp_url: str, mcp_key: str) -> str:
-    """Возвращает стайлгайд: MCP если доступен, иначе локальный fallback."""
+def get_style_guide(mcp_status, mcp_url, mcp_key):
     if mcp_status == "ok" and mcp_url and mcp_key:
         try:
             guide = fetch_style_guide_mcp(mcp_url, mcp_key)
@@ -141,13 +128,13 @@ def get_style_guide(mcp_status: str, mcp_url: str, mcp_key: str) -> str:
         print("[INFO] MCP unavailable, using local style guide.")
     return load_style_guide_local()
 
-# ─── Vale ─────────────────────────────────────────────────────────────────────
 
-def parse_vale_output(vale_json_path: str) -> dict[str, list[dict]]:
-    """
-    Парсит vale --output=JSON.
-    Возвращает {filepath: [{"line": N, "message": str, "rule": str}]}
-    """
+# ---------------------------------------------------------------------------
+# Linter output
+# ---------------------------------------------------------------------------
+
+def parse_vale_output(vale_json_path):
+    """Parse linter JSON (Vale-compatible format). Returns {filepath: [alerts]}."""
     try:
         raw = Path(vale_json_path).read_text(encoding="utf-8").strip()
         if not raw:
@@ -161,42 +148,43 @@ def parse_vale_output(vale_json_path: str) -> dict[str, list[dict]]:
         items = []
         for alert in alerts:
             items.append({
-                "line":    alert.get("Line", 0),
-                "message": alert.get("Message", ""),
-                "rule":    alert.get("Check", ""),
+                "line":     alert.get("Line", 0),
+                "message":  alert.get("Message", ""),
+                "rule":     alert.get("Check", ""),
                 "severity": alert.get("Severity", "warning"),
             })
         if items:
-            # Нормализуем путь (убираем ./ если есть)
             key = filepath.lstrip("./")
             result[key] = items
     return result
 
 
-def format_vale_for_prompt(vale_results: dict[str, list[dict]]) -> str:
-    """Форматирует Vale-предупреждения в читаемый текст для промпта."""
-    if not vale_results:
-        return "Vale не нашёл нарушений."
+def format_linter_for_prompt(linter_results):
+    """Format linter findings as readable text for the LLM prompt."""
+    if not linter_results:
+        return "Linter found no violations."
     lines = []
-    for filepath, alerts in vale_results.items():
-        lines.append(f"Файл: {filepath}")
+    for filepath, alerts in linter_results.items():
+        lines.append(f"File: {filepath}")
         for a in alerts:
-            lines.append(f"  Строка {a['line']}: [{a['rule']}] {a['message']}")
+            lines.append(f"  Line {a['line']}: [{a['rule']}] {a['message']}")
     return "\n".join(lines)
 
-# ─── Diff helpers ─────────────────────────────────────────────────────────────
 
-def extract_added_lines(diff: str, target_files: list[str]) -> dict[str, list[tuple[int, str]]]:
+# ---------------------------------------------------------------------------
+# Diff helpers
+# ---------------------------------------------------------------------------
+
+def extract_added_lines(diff, target_files):
     """
-    Извлекает добавленные строки из unified diff.
-    Возвращает {filepath: [(line_number, text), ...]}
+    Extract added lines from a unified diff.
+    Returns {filepath: [(line_number, text), ...]}
     """
-    result: dict[str, list[tuple[int, str]]] = {}
+    result = {}
     current_file = None
     new_line = 0
 
     for raw_line in diff.splitlines():
-        # Заголовок файла
         if raw_line.startswith("+++ b/"):
             current_file = raw_line[6:]
             if current_file not in result:
@@ -205,7 +193,6 @@ def extract_added_lines(diff: str, target_files: list[str]) -> dict[str, list[tu
         if raw_line.startswith("--- ") or raw_line.startswith("diff ") or raw_line.startswith("index "):
             continue
 
-        # Hunk header: @@ -a,b +c,d @@
         hunk = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw_line)
         if hunk:
             new_line = int(hunk.group(1)) - 1
@@ -216,130 +203,107 @@ def extract_added_lines(diff: str, target_files: list[str]) -> dict[str, list[tu
 
         if raw_line.startswith("+"):
             new_line += 1
-            if current_file in [f for f in target_files]:
+            if current_file in target_files:
                 result[current_file].append((new_line, raw_line[1:]))
         elif not raw_line.startswith("-"):
             new_line += 1
 
     return result
 
-# ─── Промпт ───────────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """\
-Ты — строгий редактор технической документации.
-Проверяй только изменённые строки (добавленные в PR).
-Руководствуйся стайлгайдом и результатами Vale.
+# ---------------------------------------------------------------------------
+# Prompts
+# ---------------------------------------------------------------------------
 
-Правила:
-- Комментируй только реальные нарушения стайлгайда. Молчание лучше шума.
-- Максимум {max_inline} inline-комментариев. Выбирай самые важные.
-- Не дублируй: если Vale уже точно указал нарушение, можешь добавить объяснение,
-  но не повторяй одно и то же разными словами.
-- Тон: нейтральный, конкретный. Не говори «хорошо» или «плохо».
-  Говори что именно нарушено и как исправить.
-- Не комментируй: код, JSX-теги, frontmatter (title/description),
-  имена файлов, URL, технические термины.
-- Язык комментариев: русский для docs/ru/, английский для docs/en/.
+SYSTEM_PROMPT = (
+    "You are a strict technical documentation editor.\n"
+    "Review only changed lines (lines added in this PR).\n"
+    "Follow the style guide and linter findings.\n\n"
+    "Rules:\n"
+    "- Comment only on real style guide violations. Silence is better than noise.\n"
+    f"- Maximum {{max_inline}} inline comments. Pick the most important ones.\n"
+    "- Do not duplicate: if the linter already flagged something precisely, you may add explanation,\n"
+    "  but don't repeat the same thing in different words.\n"
+    "- Tone: neutral, concrete. Don't say 'good' or 'bad'.\n"
+    "  Say what specifically is violated and how to fix it.\n"
+    "- Do not comment on: code, JSX tags, frontmatter (title/description),\n"
+    "  file names, URLs, technical terms.\n"
+    "- Comment language: Russian for docs/ru/, English for docs/en/.\n\n"
+    "Reply STRICTLY in JSON format (no markdown wrapper):\n"
+    '{{\n'
+    '  "comments": [\n'
+    '    {{"path": "docs/ru/example.mdx", "line": 42, "body": "Comment text"}}\n'
+    '  ],\n'
+    '  "summary": "Brief summary: what was checked, main issues (2-4 sentences)."\n'
+    '}}\n'
+).format(max_inline=MAX_INLINE)
 
-Ответь СТРОГО в формате JSON (без markdown-обёртки):
-{{
-  "comments": [
-    {{"path": "docs/ru/example.mdx", "line": 42, "body": "Текст комментария"}}
-  ],
-  "summary": "Краткое резюме: что проверено, основные проблемы (2-4 предложения)."
-}}
-""".format(max_inline=MAX_INLINE)
 
-
-def build_user_message(
-    diff_excerpt: str,
-    vale_text: str,
-    style_guide: str,
-    changed_files: list[str],
-) -> str:
-    # Обрезаем стайлгайд чтобы не выйти за лимит токенов
+def build_user_message(diff_excerpt, linter_text, style_guide, changed_files):
     MAX_GUIDE = 12_000
     guide_excerpt = style_guide[:MAX_GUIDE]
     if len(style_guide) > MAX_GUIDE:
-        guide_excerpt += "\n\n[стайлгайд обрезан для экономии токенов]"
+        guide_excerpt += "\n\n[style guide truncated to save tokens]"
 
     return textwrap.dedent(f"""\
-        ## Изменённые файлы
+        ## Changed files
         {chr(10).join(changed_files)}
 
-        ## Результаты Vale
-        {vale_text}
+        ## Linter findings
+        {linter_text}
 
-        ## Diff (добавленные строки)
+        ## Diff (added lines)
         ```diff
         {diff_excerpt}
         ```
 
-        ## Стайлгайд
+        ## Style guide
         {guide_excerpt}
     """)
 
-# ─── OpenAI-совместимый LLM ───────────────────────────────────────────────────
 
-def extract_json_from_response(raw: str) -> dict:
-    """
-    Извлекает JSON из ответа LLM.
-    Обрабатывает три варианта:
-    1. Чистый JSON-объект
-    2. JSON внутри markdown-блока ```json ... ```
-    3. JSON-объект, «утопленный» в тексте
-    """
+# ---------------------------------------------------------------------------
+# OpenAI-compatible LLM
+# ---------------------------------------------------------------------------
+
+def extract_json_from_response(raw):
+    """Extract JSON from LLM response. Handles plain JSON, markdown blocks, embedded JSON."""
     raw = raw.strip()
-    # Прямой парсинг
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
-    # Markdown-блок ```json ... ``` или ``` ... ```
     md_match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", raw)
     if md_match:
         try:
             return json.loads(md_match.group(1))
         except json.JSONDecodeError:
             pass
-    # Первый JSON-объект в тексте
     obj_match = re.search(r"\{[\s\S]+\}", raw)
     if obj_match:
         try:
             return json.loads(obj_match.group(0))
         except json.JSONDecodeError:
             pass
-    raise ValueError(f"Не удалось извлечь JSON из ответа LLM (первые 300 символов): {raw[:300]}")
+    raise ValueError(f"Could not extract JSON from LLM response (first 300 chars): {raw[:300]}")
 
 
-def call_llm(
-    system: str,
-    user: str,
-    api_key: str,
-    model: str = DEFAULT_MODEL,
-    base_url: str | None = None,
-    max_retries: int = 3,
-) -> dict:
+def call_llm(system, user, api_key, model=DEFAULT_MODEL, base_url=None, max_retries=3):
     """
-    Вызывает LLM через OpenAI-совместимый API, возвращает распарсенный JSON.
-    При сбое выполняет до max_retries попыток с экспоненциальной задержкой.
-
-    base_url — кастомный эндпоинт (например, внутренний прокси или локальный сервер).
-               Если None, используется стандартный api.openai.com.
-    model    — имя модели (например, «openai/gpt-oss-120b» или «gpt-4o-mini»).
+    Call LLM via OpenAI-compatible API, returns parsed JSON dict.
+    Retries up to max_retries times with exponential backoff.
+    Tries response_format=json_object first; falls back without it if unsupported.
     """
-    client_kwargs: dict = {"api_key": api_key}
+    client_kwargs = {"api_key": api_key}
     if base_url:
         client_kwargs["base_url"] = base_url
 
     client = OpenAI(**client_kwargs)
-    last_exc: Exception | None = None
+    last_exc = None
 
     for attempt in range(1, max_retries + 1):
         try:
-            # Пробуем сначала с json_object (OpenAI и совместимые),
-            # при ошибке 400/422 — повторяем без response_format.
-            call_kwargs: dict = dict(
+            call_kwargs = dict(
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
@@ -354,8 +318,7 @@ def call_llm(
                     response_format={"type": "json_object"},
                 )
             except Exception as fmt_exc:
-                # response_format не поддерживается провайдером
-                print(f"[WARN] response_format не поддерживается, повтор без него: {fmt_exc}")
+                print(f"[WARN] response_format not supported, retrying without it: {fmt_exc}")
                 response = client.chat.completions.create(**call_kwargs)
 
             raw = response.choices[0].message.content
@@ -363,29 +326,68 @@ def call_llm(
         except Exception as exc:
             last_exc = exc
             if attempt < max_retries:
-                wait = 2 ** (attempt - 1)   # 1s, 2s, 4s
-                print(f"[WARN] LLM попытка {attempt}/{max_retries} не удалась: {exc}. Повтор через {wait}с...")
+                wait = 2 ** (attempt - 1)
+                print(f"[WARN] LLM attempt {attempt}/{max_retries} failed: {exc}. Retrying in {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"[ERROR] LLM: все {max_retries} попытки исчерпаны.")
+                print(f"[ERROR] LLM: all {max_retries} attempts exhausted.")
 
-    raise last_exc  # type: ignore[misc]
+    raise last_exc
 
-# ─── Валидация комментариев ────────────────────────────────────────────────────
 
-def validate_comments(
-    comments: list[dict],
-    diff_added: dict[str, list[tuple[int, str]]],
-    changed_files: list[str],
-) -> list[dict]:
+# ---------------------------------------------------------------------------
+# Direct inline comments from linter (exact line numbers, no LLM needed)
+# ---------------------------------------------------------------------------
+
+def linter_inline_comments(linter_results, diff_added, changed_files, limit=MAX_INLINE):
     """
-    Фильтрует комментарии:
-    - только к реально изменённым (добавленным) строкам
-    - только к файлам из changed_files
-    - лимит MAX_INLINE
+    Convert linter findings directly to GitHub inline comments,
+    using exact line numbers from the linter output.
+    Only includes lines that appear in the PR diff (added lines).
+    """
+    added_lines = {
+        fp: {ln for ln, _ in lines}
+        for fp, lines in diff_added.items()
+    }
+    comments = []
+    seen = set()
+
+    for filepath, alerts in linter_results.items():
+        norm = filepath.lstrip("./")
+        if norm not in changed_files:
+            continue
+        for alert in alerts:
+            line = alert.get("line", 0)
+            if line <= 0:
+                continue
+            if norm not in added_lines or line not in added_lines[norm]:
+                continue
+            key = (norm, line)
+            if key in seen:
+                continue
+            seen.add(key)
+            rule = alert.get("rule", "")
+            msg  = alert.get("message", "")
+            comments.append({"path": norm, "line": line, "body": f"**{rule}**\n{msg}"})
+            if len(comments) >= limit:
+                return comments
+
+    return comments
+
+
+# ---------------------------------------------------------------------------
+# Validate LLM-generated comments
+# ---------------------------------------------------------------------------
+
+def validate_comments(comments, diff_added, changed_files):
+    """
+    Filter LLM-generated comments:
+    - only to actually changed (added) lines
+    - only to files from changed_files
+    - limit MAX_INLINE
     """
     valid = []
-    added_lines: dict[str, set[int]] = {
+    added_lines = {
         fp: {ln for ln, _ in lines}
         for fp, lines in diff_added.items()
     }
@@ -397,114 +399,124 @@ def validate_comments(
 
         if not path or not line or not body:
             continue
-        # Нормализуем путь
         norm_path = path.lstrip("./")
         if norm_path not in changed_files:
-            print(f"[SKIP] {norm_path}: не в списке изменённых файлов")
+            print(f"[SKIP] {norm_path}: not in changed files list")
             continue
-        # Комментарий должен быть на добавленной строке
         if norm_path not in added_lines or line not in added_lines[norm_path]:
-            print(f"[SKIP] {norm_path}:{line}: строка не добавлена в этом PR")
+            print(f"[SKIP] {norm_path}:{line}: line not added in this PR")
             continue
 
         valid.append({"path": norm_path, "line": line, "body": body})
         if len(valid) >= MAX_INLINE:
-            print(f"[INFO] Достигнут лимит {MAX_INLINE} комментариев.")
+            print(f"[INFO] Reached limit of {MAX_INLINE} comments.")
             break
 
     return valid
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--changed-files", required=True,
-                        help="Файл со списком изменённых путей (по одному на строку)")
+                        help="File with list of changed paths (one per line)")
     parser.add_argument("--vale-output", required=True,
-                        help="JSON-вывод Vale")
+                        help="Linter JSON output (Vale-compatible format)")
     args = parser.parse_args()
 
-    # Переменные окружения из GitHub Actions
     token      = os.environ["GITHUB_TOKEN"]
     repo       = os.environ["REPO"]
     pr_number  = os.environ.get("PR_NUMBER", "").strip()
     llm_key    = os.environ["LLM_API_KEY"]
-    llm_base   = os.environ.get("LLM_BASE_URL") or None   # None → api.openai.com
+    llm_base   = os.environ.get("LLM_BASE_URL") or None
     llm_model  = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
     mcp_url    = os.environ.get("MCP_SERVER_URL", "")
     mcp_key    = os.environ.get("MCP_API_KEY", "")
     mcp_status = os.environ.get("MCP_STATUS", "unavailable")
-    base_ref   = os.environ.get("BASE_REF", "main")
 
-    # ── Ранний выход при workflow_dispatch без PR ─────────────────
     if not pr_number:
-        print("[INFO] PR_NUMBER не задан (workflow_dispatch без PR). Выход без ошибки.")
+        print("[INFO] PR_NUMBER not set (workflow_dispatch without PR). Exiting cleanly.")
         sys.exit(0)
 
-    # ── Читаем список файлов ──────────────────────────────────────
     changed_files = [
         line.strip()
         for line in Path(args.changed_files).read_text().splitlines()
         if line.strip()
     ]
     if not changed_files:
-        print("[INFO] Нет файлов для проверки. Выход.")
+        print("[INFO] No files to review. Exiting.")
         sys.exit(0)
 
-    # Ограничиваем количество файлов
     if len(changed_files) > MAX_FILES:
-        print(f"[WARN] Файлов {len(changed_files)}, обрабатываем первые {MAX_FILES}.")
+        print(f"[WARN] {len(changed_files)} files, processing first {MAX_FILES}.")
         changed_files = changed_files[:MAX_FILES]
 
-    print(f"[INFO] Файлов для ревью: {len(changed_files)}")
+    print(f"[INFO] Files to review: {len(changed_files)}")
 
-    # ── Diff ─────────────────────────────────────────────────────
-    print("[INFO] Загружаем diff PR...")
+    print("[INFO] Fetching PR diff...")
     diff = get_pr_diff(repo, pr_number, token)
     diff_excerpt = diff[:MAX_DIFF_CHARS]
     if len(diff) > MAX_DIFF_CHARS:
-        print(f"[WARN] Diff обрезан до {MAX_DIFF_CHARS} символов.")
+        print(f"[WARN] Diff truncated to {MAX_DIFF_CHARS} chars.")
 
     diff_added = extract_added_lines(diff, changed_files)
+    print(f"[INFO] Added lines per file: { {k: len(v) for k, v in diff_added.items()} }")
 
-    # ── Vale ─────────────────────────────────────────────────────
-    vale_results = parse_vale_output(args.vale_output)
-    vale_text    = format_vale_for_prompt(vale_results)
-    print(f"[INFO] Vale: {sum(len(v) for v in vale_results.values())} предупреждений")
+    linter_results = parse_vale_output(args.vale_output)
+    linter_text    = format_linter_for_prompt(linter_results)
+    linter_count   = sum(len(v) for v in linter_results.values())
+    print(f"[INFO] Linter findings: {linter_count}")
 
-    # ── Стайлгайд ────────────────────────────────────────────────
     style_guide = get_style_guide(mcp_status, mcp_url, mcp_key)
 
-    # ── LLM ──────────────────────────────────────────────────────
     endpoint_info = f"{llm_base or 'api.openai.com'} / {llm_model}"
-    print(f"[INFO] Вызываем LLM: {endpoint_info}")
-    user_msg = build_user_message(diff_excerpt, vale_text, style_guide, changed_files)
+    print(f"[INFO] Calling LLM: {endpoint_info}")
+    user_msg = build_user_message(diff_excerpt, linter_text, style_guide, changed_files)
+
     try:
         result = call_llm(SYSTEM_PROMPT, user_msg, llm_key, model=llm_model, base_url=llm_base)
     except Exception as exc:
         print(f"[ERROR] LLM failed: {exc}", file=sys.stderr)
-        vale_count = sum(len(v) for v in vale_results.values())
         post_summary_only(
             repo, pr_number, token,
-            f"⚠️ **Docs Review**: LLM-анализ не удался (`{type(exc).__name__}: {exc}`).\n\n"
-            f"**Vale** нашёл **{vale_count}** предупреждений:\n\n"
-            + vale_text
+            f"\u26a0\ufe0f **Docs Review**: LLM analysis failed (`{type(exc).__name__}: {exc}`).\n\n"
+            f"**Linter** found **{linter_count}** issue(s):\n\n"
+            + linter_text
         )
-        sys.exit(0)  # Vale-результаты запощены — workflow не должен падать
+        sys.exit(0)
 
-    # ── Валидируем и постим ───────────────────────────────────────
-    raw_comments = result.get("comments", [])
-    summary      = result.get("summary", "Docs Review завершён.").strip()
+    # Validate LLM inline comments
+    raw_comments  = result.get("comments", [])
+    summary       = result.get("summary", "Docs Review complete.").strip()
+    llm_comments  = validate_comments(raw_comments, diff_added, changed_files)
+    print(f"[INFO] LLM comments after validation: {len(llm_comments)} (was {len(raw_comments)})")
 
-    valid_comments = validate_comments(raw_comments, diff_added, changed_files)
-    print(f"[INFO] Комментариев после валидации: {len(valid_comments)} (было {len(raw_comments)})")
+    # Direct inline comments from linter (exact line numbers)
+    direct_comments = linter_inline_comments(
+        linter_results, diff_added, changed_files,
+        limit=MAX_INLINE - len(llm_comments)
+    )
+    print(f"[INFO] Direct linter inline comments: {len(direct_comments)}")
 
-    # Добавляем Vale-сводку к резюме если есть нарушения
-    if vale_results:
-        vale_count = sum(len(v) for v in vale_results.values())
-        summary += f"\n\n---\n**Vale**: найдено {vale_count} предупреждени{'е' if vale_count == 1 else 'й'}."
+    # Merge: LLM comments first, then direct, dedup by (path, line)
+    used_keys = {(c["path"], c["line"]) for c in llm_comments}
+    extra = [c for c in direct_comments if (c["path"], c["line"]) not in used_keys]
+    all_comments = (llm_comments + extra)[:MAX_INLINE]
+    print(f"[INFO] Total inline comments: {len(all_comments)}")
 
-    post_review(repo, pr_number, token, valid_comments, summary)
+    # Build summary with full linter details in a collapsible section
+    if linter_results:
+        suffix = "s" if linter_count != 1 else ""
+        summary += (
+            f"\n\n---\n**Linter**: found **{linter_count}** issue{suffix}.\n\n"
+            f"<details><summary>Show all findings</summary>\n\n"
+            f"```\n{linter_text}\n```\n</details>"
+        )
+
+    post_review(repo, pr_number, token, all_comments, summary)
 
 
 if __name__ == "__main__":
