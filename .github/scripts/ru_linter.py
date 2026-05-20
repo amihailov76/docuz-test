@@ -7,10 +7,13 @@ Replaces Vale for Russian content: Vale existence+raw rules don't match
 Cyrillic on Windows runners (Go RE2 + Unicode word boundary issues).
 Reads the same YAML rules and applies them using Python re.
 
+YAML rule files may optionally include a 'raw_hints' list (parallel to 'raw')
+with suggested replacement strings shown in the linter output.
+
 Usage:
-  python ru_linter.py \
-    --files docs/ru/a.mdx docs/ru/b.mdx \
-    --output /tmp/ru.json \
+  python ru_linter.py \\
+    --files docs/ru/a.mdx docs/ru/b.mdx \\
+    --output /tmp/ru.json \\
     --styles-dir ./styles/Russian
 """
 
@@ -30,19 +33,19 @@ except ImportError:
 # JSX tags (from TokenIgnores in .vale-ru.ini)
 _JSX_TAG_RE = re.compile(
     r"(?i)</?(?:Accordion(?:Group)?|Card(?:Group)?|CodeGroup|Highlight|Info|"
-    r"Layout|Note|Steps?|Tab(?:s)?|Tip|Warning)(?:\s[^>]*)*/?>",
+    r"Layout|Note|Steps?|Tab(?:s)?|Tip|Warning)(?:\\s[^>]*)*/?>",
     re.IGNORECASE,
 )
 
-# Frontmatter separator
-_FRONTMATTER_SEP = re.compile(r"^---\s*$")
-
-# Fenced code block opener/closer
+_FRONTMATTER_SEP = re.compile(r"^---\\s*$")
 _FENCE_RE = re.compile(r"^```")
 
 
+# ---------------------------------------------------------------------------
+# Block-level skip helpers
+# ---------------------------------------------------------------------------
+
 def _frontmatter_range(lines):
-    """Return (start, end) line indices of YAML frontmatter, or (-1, -1)."""
     if not lines or not _FRONTMATTER_SEP.match(lines[0]):
         return (-1, -1)
     for i in range(1, len(lines)):
@@ -52,7 +55,6 @@ def _frontmatter_range(lines):
 
 
 def _code_block_ranges(lines):
-    """Return list of (start, end) line index ranges inside ``` ... ``` blocks."""
     ranges = []
     in_block = False
     start = 0
@@ -70,7 +72,6 @@ def _code_block_ranges(lines):
 
 
 def _skip_ranges_in_line(line):
-    """Return character ranges to skip: inline code and JSX tags."""
     ranges = []
     for m in re.finditer(r"`[^`]*`", line):
         ranges.append((m.start(), m.end()))
@@ -80,18 +81,24 @@ def _skip_ranges_in_line(line):
 
 
 def _overlaps(match_start, match_end, skip_ranges):
-    """Check whether a match overlaps with any skip range."""
     return any(match_start < end and match_end > start
                for start, end in skip_ranges)
 
 
+# ---------------------------------------------------------------------------
+# Rule loading
+# ---------------------------------------------------------------------------
+
 def load_rules(styles_dir):
-    """Load all YAML rule files from styles_dir. Supports existence rules with raw patterns."""
+    """
+    Load all YAML rule files from styles_dir.
+    Supports existence rules with 'raw' patterns.
+    Optional 'raw_hints' list (parallel to 'raw') provides suggested replacements.
+    """
     rules = []
     for yml_file in sorted(Path(styles_dir).glob("*.yml")):
         try:
-            # Read as bytes, strip null bytes (Windows artifact), decode as UTF-8
-            raw_bytes = yml_file.read_bytes().replace(b"\x00", b"")
+            raw_bytes = yml_file.read_bytes().replace(b"\\x00", b"")
             data = yaml.safe_load(raw_bytes.decode("utf-8"))
         except Exception as exc:
             print(f"[WARN] Could not load {yml_file}: {exc}", file=sys.stderr)
@@ -100,13 +107,15 @@ def load_rules(styles_dir):
         if not data or data.get("extends") != "existence":
             continue
         raw_patterns = data.get("raw") or []
+        raw_hints    = data.get("raw_hints") or []   # parallel list of replacement hints
         if not raw_patterns:
             continue
 
         compiled = []
-        for pat in raw_patterns:
+        for i, pat in enumerate(raw_patterns):
+            hint = raw_hints[i] if i < len(raw_hints) else ""
             try:
-                compiled.append(re.compile(pat, re.IGNORECASE | re.UNICODE))
+                compiled.append((re.compile(pat, re.IGNORECASE | re.UNICODE), hint))
             except re.error as exc:
                 print(f"[WARN] {yml_file.name}: bad pattern {pat!r}: {exc}", file=sys.stderr)
 
@@ -116,14 +125,18 @@ def load_rules(styles_dir):
                 "message":  data.get("message", "Style violation: \"%s\"."),
                 "severity": data.get("level", "warning"),
                 "link":     data.get("link", ""),
-                "patterns": compiled,
+                "patterns": compiled,   # list of (compiled_regex, hint_str)
             })
 
     return rules
 
 
+# ---------------------------------------------------------------------------
+# Single-file linting
+# ---------------------------------------------------------------------------
+
 def lint_file(filepath, rules):
-    """Lint a single MDX file and return a list of Vale-format findings."""
+    """Lint one MDX file, return Vale-compatible findings list."""
     try:
         with open(filepath, encoding="utf-8") as f:
             content = f.read()
@@ -149,24 +162,31 @@ def lint_file(filepath, rules):
         skip_ranges = _skip_ranges_in_line(raw_line)
 
         for rule in rules:
-            for pattern in rule["patterns"]:
+            for pattern, hint in rule["patterns"]:
                 for m in pattern.finditer(raw_line):
                     if _overlaps(m.start(), m.end(), skip_ranges):
                         continue
                     matched_text = m.group(0)
+                    msg = rule["message"].replace("%s", matched_text)
+                    if hint:
+                        msg += f" Replacement: \"{hint}\""
                     findings.append({
                         "Action":      {"Name": "", "Params": None},
                         "Check":       rule["name"],
                         "Description": "",
                         "Line":        line_idx + 1,
                         "Link":        rule["link"],
-                        "Message":     rule["message"].replace("%s", matched_text),
+                        "Message":     msg,
                         "Severity":    rule["severity"],
                         "Span":        [m.start() + 1, m.end()],
                     })
 
     return findings
 
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(description="Russian MDX linter (Vale replacement)")
