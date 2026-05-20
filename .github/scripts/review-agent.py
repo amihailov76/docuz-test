@@ -33,6 +33,7 @@ DEFAULT_MODEL     = "gpt-4o-mini"
 MAX_INLINE        = 20          # max inline comments
 MAX_FILES         = 10          # max files per run
 MAX_DIFF_CHARS    = 60_000      # truncate diff to this size
+MAX_FILE_CHARS    = 30_000      # per-file content guard (skip oversized files)
 MCP_TIMEOUT       = 10          # seconds per MCP request
 STYLE_GUIDE_DIR   = Path(__file__).parent.parent.parent / "style_guide"
 
@@ -217,11 +218,14 @@ def extract_added_lines(diff, target_files):
 
 SYSTEM_PROMPT = (
     "You are a strict technical documentation editor.\n"
-    "Review only changed lines (lines added in this PR).\n"
-    "Follow the style guide and linter findings.\n\n"
+    "You receive the FULL content of each changed file, plus the PR diff showing what was added.\n"
+    "Review the ENTIRE file for style guide violations — not just the changed lines.\n\n"
     "Rules:\n"
     "- Comment only on real style guide violations. Silence is better than noise.\n"
     f"- Maximum {{max_inline}} inline comments. Pick the most important ones.\n"
+    "- INLINE COMMENTS: only on lines that appear in the diff (added/changed lines).\n"
+    "  GitHub does not allow inline comments on unchanged lines.\n"
+    "- UNCHANGED LINES with violations: mention them in the 'summary' field, not as inline comments.\n"
     "- Do not duplicate: if the linter already flagged something precisely, you may add explanation,\n"
     "  but don't repeat the same thing in different words.\n"
     "- Tone: neutral, concrete. Don't say 'good' or 'bad'.\n"
@@ -234,25 +238,56 @@ SYSTEM_PROMPT = (
     '  "comments": [\n'
     '    {{"path": "docs/ru/example.mdx", "line": 42, "body": "Comment text"}}\n'
     '  ],\n'
-    '  "summary": "Brief summary: what was checked, main issues (2-4 sentences)."\n'
+    '  "summary": "Brief summary: what was checked, main issues (2-4 sentences). '
+    'Include issues found in unchanged lines here."\n'
     '}}\n'
 ).format(max_inline=MAX_INLINE)
 
 
-def build_user_message(diff_excerpt, linter_text, style_guide, changed_files):
-    MAX_GUIDE = 12_000
+def read_changed_files(changed_files):
+    """
+    Read full content of each changed file from disk.
+    Returns {filepath: content_or_error_string}.
+    Skips files larger than MAX_FILE_CHARS.
+    """
+    contents = {}
+    for filepath in changed_files:
+        try:
+            text = Path(filepath).read_text(encoding="utf-8")
+            if len(text) > MAX_FILE_CHARS:
+                contents[filepath] = f"[File too large to include ({len(text)} chars > {MAX_FILE_CHARS})]"
+            else:
+                contents[filepath] = text
+        except FileNotFoundError:
+            contents[filepath] = "[File not found — may have been deleted in this PR]"
+        except Exception as exc:
+            contents[filepath] = f"[Could not read file: {exc}]"
+    return contents
+
+
+def build_user_message(diff_excerpt, linter_text, style_guide, changed_files, file_contents=None):
+    MAX_GUIDE = 50_000
     guide_excerpt = style_guide[:MAX_GUIDE]
     if len(style_guide) > MAX_GUIDE:
         guide_excerpt += "\n\n[style guide truncated to save tokens]"
 
+    files_section = ""
+    if file_contents:
+        parts = []
+        for fp, content in file_contents.items():
+            parts.append(f"### {fp}\n```\n{content}\n```")
+        files_section = "\n\n".join(parts)
+    else:
+        files_section = chr(10).join(changed_files)
+
     return textwrap.dedent(f"""\
-        ## Changed files
-        {chr(10).join(changed_files)}
+        ## Full file content
+        {files_section}
 
         ## Linter findings
         {linter_text}
 
-        ## Diff (added lines)
+        ## Diff (what changed in this PR)
         ```diff
         {diff_excerpt}
         ```
@@ -472,9 +507,15 @@ def main():
 
     style_guide = get_style_guide(mcp_status, mcp_url, mcp_key)
 
+    print("[INFO] Reading full file contents...")
+    file_contents = read_changed_files(changed_files)
+    for fp, content in file_contents.items():
+        chars = len(content)
+        print(f"[INFO]   {fp}: {chars} chars")
+
     endpoint_info = f"{llm_base or 'api.openai.com'} / {llm_model}"
     print(f"[INFO] Calling LLM: {endpoint_info}")
-    user_msg = build_user_message(diff_excerpt, linter_text, style_guide, changed_files)
+    user_msg = build_user_message(diff_excerpt, linter_text, style_guide, changed_files, file_contents)
 
     try:
         result = call_llm(SYSTEM_PROMPT, user_msg, llm_key, model=llm_model, base_url=llm_base)
