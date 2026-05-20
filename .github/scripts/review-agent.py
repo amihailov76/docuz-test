@@ -329,7 +329,7 @@ def call_llm(system, user, api_key, model=DEFAULT_MODEL, base_url=None, max_retr
     Retries up to max_retries times with exponential backoff.
     Tries response_format=json_object first; falls back without it if unsupported.
     """
-    client_kwargs = {"api_key": api_key}
+    client_kwargs = {"api_key": api_key, "timeout": 180.0}
     if base_url:
         client_kwargs["base_url"] = base_url
 
@@ -557,7 +557,16 @@ def main():
             f"```\n{linter_text}\n```\n</details>"
         )
 
-    post_review(repo, pr_number, token, all_comments, summary)
+    try:
+        post_review(repo, pr_number, token, all_comments, summary)
+    except Exception as post_exc:
+        print(f"[WARN] post_review failed ({post_exc}), retrying as summary-only...")
+        try:
+            post_summary_only(repo, pr_number, token, summary)
+            print("[OK] Summary-only review posted as fallback.")
+        except Exception as fallback_exc:
+            print(f"[ERROR] Fallback also failed: {fallback_exc}", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
