@@ -77,15 +77,76 @@ jobs:
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── 5. Получаем правила и стайлгайд: MCP → fallback локально ───
+      - name: Fetch rules and style guide
+        if: steps.changed-files.outputs.has_files == 'true'
+        id: fetch-rules
+        env:
+          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
+          MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
+        run: |
+          python - << 'PYEOF'
+          import json, os, shutil, urllib.request
+          from pathlib import Path
+
+          mcp_url = os.environ.get("MCP_SERVER_URL", "").strip()
+          mcp_key = os.environ.get("MCP_API_KEY", "").strip()
+          temp    = os.environ.get("RUNNER_TEMP", "/tmp")
+          ws      = os.getcwd()
+
+          ru_dir = Path(temp) / "rules" / "Russian"
+          sg_dir = Path(temp) / "rules" / "style_guide"
+          ru_dir.mkdir(parents=True, exist_ok=True)
+          sg_dir.mkdir(parents=True, exist_ok=True)
+
+          mcp_ok = False
+          if mcp_url and mcp_key:
+              try:
+                  headers = {"Authorization": f"Bearer {mcp_key}"}
+
+                  req = urllib.request.Request(
+                      f"{mcp_url}/tools/get_forbidden_words", headers=headers)
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      for stem, content in json.loads(r.read()).get("rules", {}).items():
+                          (ru_dir / f"{stem}.yml").write_text(content, encoding="utf-8")
+
+                  req2 = urllib.request.Request(
+                      f"{mcp_url}/tools/get_style_guide", headers=headers)
+                  with urllib.request.urlopen(req2, timeout=10) as r:
+                      data = json.loads(r.read())
+                      sections = data.get("sections") or {}
+                      if not sections and "content" in data:
+                          (sg_dir / "styleguide.md").write_text(data["content"], encoding="utf-8")
+                      else:
+                          for fname, text in sections.items():
+                              (sg_dir / fname).write_text(text, encoding="utf-8")
+
+                  mcp_ok = True
+                  print("[INFO] Rules and style guide fetched from MCP server.")
+              except Exception as e:
+                  print(f"[WARN] MCP fetch failed: {e}. Using local files.")
+
+          if not mcp_ok:
+              local_ru = Path(ws) / "styles" / "Russian"
+              local_sg = Path(ws) / "style_guide"
+              if local_ru.exists():
+                  shutil.copytree(str(local_ru), str(ru_dir), dirs_exist_ok=True)
+              if local_sg.exists():
+                  shutil.copytree(str(local_sg), str(sg_dir), dirs_exist_ok=True)
+              print("[INFO] Using local rules and style guide.")
+
+          gh_out = os.environ.get("GITHUB_OUTPUT", "")
+          if gh_out:
+              with open(gh_out, "a") as f:
+                  f.write(f"ru_rules_dir={ru_dir}\n")
+                  f.write(f"styleguide_dir={sg_dir}\n")
+                  f.write(f"mcp_status={'ok' if mcp_ok else 'unavailable'}\n")
+          PYEOF
+
       # ── 5а. Python-линтер для русских файлов ──────────────────────
-      # Vale existence+raw не матчит кириллицу на Windows-раннере.
-      # Линтер загружает правила с MCP-сервера; при недоступности — локальный fallback.
       - name: Lint Russian files (Python)
         if: steps.changed-files.outputs.has_files == 'true'
         id: lint-ru
-        env:
-          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
-          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
         run: |
           RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
           if [ -n "$RU_FILES" ]; then
@@ -93,7 +154,7 @@ jobs:
             python .github/scripts/ru_linter.py \
               --files $RU_FILES \
               --output "$RUNNER_TEMP/vale_ru.json" \
-              --styles-dir "$(pwd)/styles/Russian"
+              --styles-dir "${{ steps.fetch-rules.outputs.ru_rules_dir }}"
           else
             echo "[INFO] Русских файлов нет — пропускаем."
             echo "{}" > "$RUNNER_TEMP/vale_ru.json"
@@ -155,48 +216,19 @@ jobs:
           " 2>/dev/null || echo 0)
           echo "Всего предупреждений: $WARN_COUNT"
 
-      # ── 6. Health-check MCP-сервера ───────────────────────────────
-      - name: MCP server health check
-        if: steps.changed-files.outputs.has_files == 'true'
-        id: mcp-health
-        env:
-          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
-          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
-        run: |
-          STATUS="unavailable"
-          if [ -z "$MCP_SERVER_URL" ]; then
-            echo "MCP_SERVER_URL не задан, используем локальный стайлгайд."
-          else
-            for i in 1 2 3; do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-                -H "Authorization: Bearer $MCP_API_KEY" \
-                --max-time 10 \
-                "$MCP_SERVER_URL/health" 2>/dev/null || echo "000")
-              if [ "$HTTP_CODE" = "200" ]; then
-                STATUS="ok"; break
-              fi
-              echo "Попытка $i: HTTP $HTTP_CODE. Повтор через 10с..."
-              sleep 10
-            done
-          fi
-          echo "mcp_status=$STATUS" >> "$GITHUB_OUTPUT"
-          echo "MCP status: $STATUS"
-
       # ── 7. LLM review agent ───────────────────────────────────────
       - name: Run LLM review agent
         if: steps.changed-files.outputs.has_files == 'true'
         env:
-          LLM_API_KEY:    ${{ secrets.LLM_API_KEY }}
-          LLM_BASE_URL:   ${{ vars.LLM_BASE_URL }}
-          LLM_MODEL:      ${{ vars.LLM_MODEL }}
-          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
-          MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
-          MCP_STATUS:     ${{ steps.mcp-health.outputs.mcp_status }}
-          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER:      ${{ github.event.pull_request.number || inputs.pr_number }}
-          REPO:           ${{ github.repository }}
-          BASE_REF:       ${{ github.base_ref || 'main' }}
+          LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL:    ${{ vars.LLM_MODEL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPO:         ${{ github.repository }}
+          BASE_REF:     ${{ github.base_ref || 'main' }}
         run: |
           python .github/scripts/review-agent.py \
             --changed-files "$RUNNER_TEMP/changed_files.txt" \
-            --vale-output "$RUNNER_TEMP/vale_output.json"
+            --vale-output "$RUNNER_TEMP/vale_output.json" \
+            --style-guide-dir "${{ steps.fetch-rules.outputs.styleguide_dir }}"
