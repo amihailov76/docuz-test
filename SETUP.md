@@ -215,10 +215,17 @@ MCP-сервер централизованно хранит стайлгайд 
 ### Ожидаемые сообщения в логах
 
 ```
-[INFO] Loaded N rule(s) from MCP: [...]      # если MCP настроен
-[INFO] Using local rules from disk.           # если MCP не настроен — нормально
-[OK] Style guide loaded from MCP server       # если MCP настроен
-[INFO] MCP unavailable, using local style guide  # если MCP не настроен — нормально
+# Шаг «Fetch rules and style guide»:
+[INFO] Rules and style guide fetched from MCP server.   # если MCP настроен
+[INFO] Using local rules and style guide.               # если MCP не настроен — нормально
+
+# Шаг линтера:
+[INFO] Loaded N rule file(s): [...]
+[INFO] путь/к/файлу.mdx: N warning(s)
+    line N  [Russian.WordChoice]  "слово"  —  сообщение
+
+# Шаг агента:
+[INFO] Loading style guide from prepared directory.
 [OK] Review posted with N inline comment(s).
 ```
 
