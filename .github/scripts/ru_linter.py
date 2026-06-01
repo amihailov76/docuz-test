@@ -301,6 +301,12 @@ def main():
             results[filepath] = findings
             total += len(findings)
             print(f"[INFO] {filepath}: {len(findings)} warning(s)")
+            for item in findings:
+                line  = item.get("Line", "?")
+                check = item.get("Check", "?")
+                match = item.get("Match", "")
+                msg   = item.get("Message", "")
+                print(f"    line {line}  [{check}]  \"{match}\"  —  {msg}")
         else:
             print(f"[INFO] {filepath}: no warnings")
 
