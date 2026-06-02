@@ -1,0 +1,26 @@
+---
+title: How to choose a MaxPatrol SIEM configuration
+sidebar_label: Choosing a configuration
+---
+
+# How to choose a MaxPatrol SIEM configuration
+
+Depending on the company IT infrastructure complexity, the following MaxPatrol SIEM configurations can be used:
+
+- **For low-load systems.** The configuration is recommended for companies that expect to scan hosts once a month or less, receive an event flow not exceeding 5,000 events per second, and do not plan to expand their IT infrastructure.
+- **For medium-load systems.** The configuration is recommended for companies that expect to receive an event flow not exceeding 15,000 events per second and plan to expand their IT infrastructure.
+- **For high-load systems.** The configuration is recommended for companies that plan to receive an event flow not exceeding 50,000 events per second per pipeline.
+
+MaxPatrol SIEM consists of several software components, which makes it very flexible and easily scalable in companies of any size. The following options are available when scaling the system in geographically distributed organizations.
+
+## Deploying MaxPatrol SIEM on multiple sites
+
+In large organizations, you can deploy one of the MaxPatrol SIEM configurations (a local site) in every subdivision. Each site has its own management server (the MP 10 Core component) and its own asset and incident database. The PT MC components link the sites, which allows user account synchronization, cross-site event search and event replication between sites.
+
+## Installing additional event processing pipelines
+
+Generally, an event processing pipeline consists of the MP SIEM Server, MP SIEM Events Storage components and several collectors. By default, MaxPatrol SIEM has only one pipeline. One or more pipelines can be added to the existing system (for example, if your IT infrastructure is growing). The number of additional pipelines is limited by your license.
+
+You can install a pipeline in each remote organization branch to collect, process and store events occurring on their assets. All pipelines are managed by a single server—the MP 10 Core component installed in the headquarters. Each pipeline sends information about its branch assets to the management server. You can also install a pipeline in the headquarters to process events that occur in its IT infrastructure.
+
+Deploying the system on multiple pipelines allows you to balance the load between them while using a single server to store information about all assets and incidents, manage IT infrastructure scans and event collection, and view and analyze events.
