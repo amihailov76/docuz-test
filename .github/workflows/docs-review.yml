@@ -27,6 +27,7 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.workspace }}
 
     steps:
       # ── 1. Получаем код ───────────────────────────────────────────
