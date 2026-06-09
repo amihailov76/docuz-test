@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: 'Номер PR для проверки (оставьте пустым — workflow завершится без ошибки)'
+        description: 'PR number to review (leave empty to exit cleanly)'
         required: false
         default: ''
 
@@ -29,16 +29,20 @@ jobs:
         shell: bash
 
     steps:
-      # ── 1. Получаем код ───────────────────────────────────────────
+      # ── 1. Checkout ───────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # ── 2. Python ────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install Python deps
-        run: |
-          python -m pip install -r .github/scripts/requirements.txt --quiet
+        run: python -m pip install -r .github/scripts/requirements.txt --quiet
 
       # ── 3. Vale ──────────────────────────────────────────────────
       - name: Install Vale
@@ -51,7 +55,7 @@ jobs:
           echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/vale-bin/vale" --version
 
-      # ── 3а. Диагностика Vale-конфигов (помогает при отладке) ─────
+      # ── 3a. Vale config diagnostics ──────────────────────────────
       - name: Vale config diagnostics
         run: |
           echo "=== .vale-ru.ini ===" && \
@@ -59,7 +63,7 @@ jobs:
           echo "=== .vale-en.ini ===" && \
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" ls-config 2>&1 | head -40 || true
 
-      # ── 4. Определяем изменённые файлы ───────────────────────────
+      # ── 4. Get changed docs files ─────────────────────────────────
       - name: Get changed docs files
         id: changed-files
         env:
@@ -67,187 +71,80 @@ jobs:
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
           REPO:         ${{ github.repository }}
         run: |
-          cat > "$RUNNER_TEMP/get_files.py" << 'PYEOF'
-import os, urllib.request, json, sys
-
-token  = os.environ["GITHUB_TOKEN"]
-repo   = os.environ["REPO"]
-pr_num = os.environ.get("PR_NUMBER", "").strip()
-
-print(f"[DEBUG] pr_num={repr(pr_num)}", file=sys.stderr)
-
-if not pr_num:
-    print("[WARN] No PR number — cannot detect changed files.", file=sys.stderr)
-    sys.exit(0)
-
-url = f"https://api.github.com/repos/{repo}/pulls/{pr_num}/files?per_page=100"
-print(f"[DEBUG] Fetching: {url}", file=sys.stderr)
-req = urllib.request.Request(url, headers={
-    "Authorization": f"token {token}",
-    "Accept": "application/vnd.github+json"
-})
-try:
-    with urllib.request.urlopen(req, timeout=15) as r:
-        files = json.load(r)
-    print(f"[DEBUG] Total files in PR: {len(files)}", file=sys.stderr)
-    for f in files:
-        name = f["filename"]
-        print(f"[DEBUG] file: {name}", file=sys.stderr)
-        if name.startswith("docs/") and name.endswith(".mdx"):
-            parts = name.split("/")
-            if len(parts) >= 2 and parts[1] in ("ru", "en"):
-                print(name)
-except Exception as e:
-    print(f"[ERROR] API call failed: {e}", file=sys.stderr)
-    sys.exit(1)
-PYEOF
-          CHANGED=$(python "$RUNNER_TEMP/get_files.py")
+          # stderr (debug output) goes to workflow log; stdout = file list
+          python .github/scripts/get_changed_files.py \
+            > "$RUNNER_TEMP/changed_files.txt" || true
+          CHANGED=$(cat "$RUNNER_TEMP/changed_files.txt" 2>/dev/null || true)
           if [ -z "$CHANGED" ]; then
             echo "No eligible docs files changed."
             echo "has_files=false" >> "$GITHUB_OUTPUT"
           else
             echo "Changed files:"
-            echo "$CHANGED"
-            echo "$CHANGED" > "$RUNNER_TEMP/changed_files.txt"
+            cat "$RUNNER_TEMP/changed_files.txt"
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── 5. Получаем правила и стайлгайд: MCP → fallback локально ───
+      # ── 5. Fetch rules and style guide (MCP -> local fallback) ────
       - name: Fetch rules and style guide
         if: steps.changed-files.outputs.has_files == 'true'
         id: fetch-rules
         env:
           MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
-        run: |
-          cat > "$RUNNER_TEMP/fetch_rules.py" << 'PYEOF'
-import json, os, shutil, urllib.request
-from pathlib import Path
+        run: python .github/scripts/fetch_rules.py
 
-mcp_url = os.environ.get("MCP_SERVER_URL", "").strip()
-mcp_key = os.environ.get("MCP_API_KEY", "").strip()
-temp    = os.environ.get("RUNNER_TEMP", "/tmp")
-ws      = os.getcwd()
-
-ru_dir = Path(temp) / "rules" / "Russian"
-sg_dir = Path(temp) / "rules" / "style_guide"
-ru_dir.mkdir(parents=True, exist_ok=True)
-sg_dir.mkdir(parents=True, exist_ok=True)
-
-mcp_ok = False
-if mcp_url and mcp_key:
-    try:
-        headers = {"Authorization": f"Bearer {mcp_key}"}
-        req = urllib.request.Request(f"{mcp_url}/tools/get_forbidden_words", headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as r:
-            for stem, content in json.loads(r.read()).get("rules", {}).items():
-                (ru_dir / f"{stem}.yml").write_text(content, encoding="utf-8")
-        req2 = urllib.request.Request(f"{mcp_url}/tools/get_style_guide", headers=headers)
-        with urllib.request.urlopen(req2, timeout=10) as r:
-            data = json.loads(r.read())
-            sections = data.get("sections") or {}
-            if not sections and "content" in data:
-                (sg_dir / "styleguide.md").write_text(data["content"], encoding="utf-8")
-            else:
-                for fname, text in sections.items():
-                    (sg_dir / fname).write_text(text, encoding="utf-8")
-        mcp_ok = True
-        print("[INFO] Rules and style guide fetched from MCP server.")
-    except Exception as e:
-        print(f"[WARN] MCP fetch failed: {e}. Using local files.")
-
-if not mcp_ok:
-    local_ru = Path(ws) / "styles" / "Russian"
-    local_sg = Path(ws) / "style_guide"
-    if local_ru.exists():
-        shutil.copytree(str(local_ru), str(ru_dir), dirs_exist_ok=True)
-    if local_sg.exists():
-        shutil.copytree(str(local_sg), str(sg_dir), dirs_exist_ok=True)
-    print("[INFO] Using local rules and style guide.")
-
-gh_out = os.environ.get("GITHUB_OUTPUT", "")
-if gh_out:
-    with open(gh_out, "a") as f:
-        f.write(f"ru_rules_dir={ru_dir}\n")
-        f.write(f"styleguide_dir={sg_dir}\n")
-        f.write(f"mcp_status={'ok' if mcp_ok else 'unavailable'}\n")
-PYEOF
-          python "$RUNNER_TEMP/fetch_rules.py"
-
-      # ── 5а. Python-линтер для русских файлов ──────────────────────
+      # ── 5a. Lint Russian files ────────────────────────────────────
       - name: Lint Russian files (Python)
         if: steps.changed-files.outputs.has_files == 'true'
         id: lint-ru
         run: |
           RU_FILES=$(grep 'docs/ru' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
           if [ -n "$RU_FILES" ]; then
-            echo "[INFO] Проверяем русские файлы: $RU_FILES"
+            echo "[INFO] Checking Russian files: $RU_FILES"
             python .github/scripts/ru_linter.py \
               --files $RU_FILES \
               --output "$RUNNER_TEMP/vale_ru.json" \
               --styles-dir "${{ steps.fetch-rules.outputs.ru_rules_dir }}"
           else
-            echo "[INFO] Русских файлов нет — пропускаем."
+            echo "[INFO] No Russian files -- skipping."
             echo "{}" > "$RUNNER_TEMP/vale_ru.json"
           fi
 
-      # ── 5б. Vale lint для английских файлов ──────────────────────
-      # ВАЖНО: stderr Vale в отдельный файл — иначе ломает JSON.
+      # ── 5b. Lint English files (Vale) ─────────────────────────────
       - name: Lint English files (Vale)
         if: steps.changed-files.outputs.has_files == 'true'
         id: lint-en
         run: |
           EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
           if [ -n "$EN_FILES" ]; then
-            echo "[INFO] Проверяем английские файлы: $EN_FILES"
+            echo "[INFO] Checking English files: $EN_FILES"
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" --output=JSON $EN_FILES \
               > "$RUNNER_TEMP/vale_en.json" \
               2> "$RUNNER_TEMP/vale_en.err" \
               || true
             if [ -s "$RUNNER_TEMP/vale_en.err" ]; then
-              echo "[WARN] Vale EN stderr:"
+              echo "[WARN] Vale stderr:"
               cat "$RUNNER_TEMP/vale_en.err"
             fi
           else
-            echo "[INFO] Английских файлов нет — пропускаем."
+            echo "[INFO] No English files -- skipping."
             echo "{}" > "$RUNNER_TEMP/vale_en.json"
           fi
 
-      # ── 5в. Объединяем результаты ────────────────────────────────
+      # ── 5c. Merge lint results ─────────────────────────────────────
       - name: Merge lint results
         if: steps.changed-files.outputs.has_files == 'true'
         id: vale
         run: |
-          python - "$RUNNER_TEMP/vale_ru.json" "$RUNNER_TEMP/vale_en.json" \
-            > "$RUNNER_TEMP/vale_output.json" << 'PYEOF'
-          import json, os, sys
-          merged = {}
-          for path in sys.argv[1:]:
-              if not os.path.exists(path):
-                  continue
-              try:
-                  text = open(path, encoding="utf-8").read().strip()
-                  if text.startswith("{"):
-                      merged.update(json.loads(text))
-                  elif text:
-                      print(f"[WARN] {path}: не JSON — пропущен", file=sys.stderr)
-              except Exception as e:
-                  print(f"[WARN] {path}: {e}", file=sys.stderr)
-          print(json.dumps(merged))
-          PYEOF
+          python .github/scripts/merge_lint.py \
+            "$RUNNER_TEMP/vale_ru.json" \
+            "$RUNNER_TEMP/vale_en.json" \
+            > "$RUNNER_TEMP/vale_output.json"
 
-          WARN_COUNT=$(python -c "
-          import json, sys
-          try:
-              d = json.load(open('$RUNNER_TEMP/vale_output.json'))
-              print(sum(len(v) for v in d.values() if isinstance(v, list)))
-          except Exception as e:
-              print(0, file=sys.stderr)
-              print(0)
-          " 2>/dev/null || echo 0)
-          echo "Всего предупреждений: $WARN_COUNT"
+          WARN_COUNT=$(python -c "import json; d=json.load(open('$RUNNER_TEMP/vale_output.json')); print(sum(len(v) for v in d.values() if isinstance(v,list)))" 2>/dev/null || echo 0)
+          echo "Total warnings: $WARN_COUNT"
 
-      # ── 7. LLM review agent ───────────────────────────────────────
+      # ── 6. LLM review agent ───────────────────────────────────────
       - name: Run LLM review agent
         if: steps.changed-files.outputs.has_files == 'true'
         env:
