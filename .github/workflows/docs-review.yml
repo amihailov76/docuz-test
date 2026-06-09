@@ -62,11 +62,46 @@ jobs:
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
         id: changed-files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPO:         ${{ github.repository }}
         run: |
-          BASE="${{ github.base_ref || 'main' }}"
-          CHANGED=$(git diff --name-only "origin/${BASE}...HEAD" \
-            | grep -E '^docs/(ru|en)/.+\.mdx$' \
-            || true)
+          cat > "$RUNNER_TEMP/get_files.py" << 'PYEOF'
+import os, urllib.request, json, sys
+
+token  = os.environ["GITHUB_TOKEN"]
+repo   = os.environ["REPO"]
+pr_num = os.environ.get("PR_NUMBER", "").strip()
+
+print(f"[DEBUG] pr_num={repr(pr_num)}", file=sys.stderr)
+
+if not pr_num:
+    print("[WARN] No PR number — cannot detect changed files.", file=sys.stderr)
+    sys.exit(0)
+
+url = f"https://api.github.com/repos/{repo}/pulls/{pr_num}/files?per_page=100"
+print(f"[DEBUG] Fetching: {url}", file=sys.stderr)
+req = urllib.request.Request(url, headers={
+    "Authorization": f"token {token}",
+    "Accept": "application/vnd.github+json"
+})
+try:
+    with urllib.request.urlopen(req, timeout=15) as r:
+        files = json.load(r)
+    print(f"[DEBUG] Total files in PR: {len(files)}", file=sys.stderr)
+    for f in files:
+        name = f["filename"]
+        print(f"[DEBUG] file: {name}", file=sys.stderr)
+        if name.startswith("docs/") and name.endswith(".mdx"):
+            parts = name.split("/")
+            if len(parts) >= 2 and parts[1] in ("ru", "en"):
+                print(name)
+except Exception as e:
+    print(f"[ERROR] API call failed: {e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+          CHANGED=$(python "$RUNNER_TEMP/get_files.py")
           if [ -z "$CHANGED" ]; then
             echo "No eligible docs files changed."
             echo "has_files=false" >> "$GITHUB_OUTPUT"
@@ -85,63 +120,59 @@ jobs:
           MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
         run: |
-          python - << 'PYEOF'
-          import json, os, shutil, urllib.request
-          from pathlib import Path
+          cat > "$RUNNER_TEMP/fetch_rules.py" << 'PYEOF'
+import json, os, shutil, urllib.request
+from pathlib import Path
 
-          mcp_url = os.environ.get("MCP_SERVER_URL", "").strip()
-          mcp_key = os.environ.get("MCP_API_KEY", "").strip()
-          temp    = os.environ.get("RUNNER_TEMP", "/tmp")
-          ws      = os.getcwd()
+mcp_url = os.environ.get("MCP_SERVER_URL", "").strip()
+mcp_key = os.environ.get("MCP_API_KEY", "").strip()
+temp    = os.environ.get("RUNNER_TEMP", "/tmp")
+ws      = os.getcwd()
 
-          ru_dir = Path(temp) / "rules" / "Russian"
-          sg_dir = Path(temp) / "rules" / "style_guide"
-          ru_dir.mkdir(parents=True, exist_ok=True)
-          sg_dir.mkdir(parents=True, exist_ok=True)
+ru_dir = Path(temp) / "rules" / "Russian"
+sg_dir = Path(temp) / "rules" / "style_guide"
+ru_dir.mkdir(parents=True, exist_ok=True)
+sg_dir.mkdir(parents=True, exist_ok=True)
 
-          mcp_ok = False
-          if mcp_url and mcp_key:
-              try:
-                  headers = {"Authorization": f"Bearer {mcp_key}"}
+mcp_ok = False
+if mcp_url and mcp_key:
+    try:
+        headers = {"Authorization": f"Bearer {mcp_key}"}
+        req = urllib.request.Request(f"{mcp_url}/tools/get_forbidden_words", headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            for stem, content in json.loads(r.read()).get("rules", {}).items():
+                (ru_dir / f"{stem}.yml").write_text(content, encoding="utf-8")
+        req2 = urllib.request.Request(f"{mcp_url}/tools/get_style_guide", headers=headers)
+        with urllib.request.urlopen(req2, timeout=10) as r:
+            data = json.loads(r.read())
+            sections = data.get("sections") or {}
+            if not sections and "content" in data:
+                (sg_dir / "styleguide.md").write_text(data["content"], encoding="utf-8")
+            else:
+                for fname, text in sections.items():
+                    (sg_dir / fname).write_text(text, encoding="utf-8")
+        mcp_ok = True
+        print("[INFO] Rules and style guide fetched from MCP server.")
+    except Exception as e:
+        print(f"[WARN] MCP fetch failed: {e}. Using local files.")
 
-                  req = urllib.request.Request(
-                      f"{mcp_url}/tools/get_forbidden_words", headers=headers)
-                  with urllib.request.urlopen(req, timeout=10) as r:
-                      for stem, content in json.loads(r.read()).get("rules", {}).items():
-                          (ru_dir / f"{stem}.yml").write_text(content, encoding="utf-8")
+if not mcp_ok:
+    local_ru = Path(ws) / "styles" / "Russian"
+    local_sg = Path(ws) / "style_guide"
+    if local_ru.exists():
+        shutil.copytree(str(local_ru), str(ru_dir), dirs_exist_ok=True)
+    if local_sg.exists():
+        shutil.copytree(str(local_sg), str(sg_dir), dirs_exist_ok=True)
+    print("[INFO] Using local rules and style guide.")
 
-                  req2 = urllib.request.Request(
-                      f"{mcp_url}/tools/get_style_guide", headers=headers)
-                  with urllib.request.urlopen(req2, timeout=10) as r:
-                      data = json.loads(r.read())
-                      sections = data.get("sections") or {}
-                      if not sections and "content" in data:
-                          (sg_dir / "styleguide.md").write_text(data["content"], encoding="utf-8")
-                      else:
-                          for fname, text in sections.items():
-                              (sg_dir / fname).write_text(text, encoding="utf-8")
-
-                  mcp_ok = True
-                  print("[INFO] Rules and style guide fetched from MCP server.")
-              except Exception as e:
-                  print(f"[WARN] MCP fetch failed: {e}. Using local files.")
-
-          if not mcp_ok:
-              local_ru = Path(ws) / "styles" / "Russian"
-              local_sg = Path(ws) / "style_guide"
-              if local_ru.exists():
-                  shutil.copytree(str(local_ru), str(ru_dir), dirs_exist_ok=True)
-              if local_sg.exists():
-                  shutil.copytree(str(local_sg), str(sg_dir), dirs_exist_ok=True)
-              print("[INFO] Using local rules and style guide.")
-
-          gh_out = os.environ.get("GITHUB_OUTPUT", "")
-          if gh_out:
-              with open(gh_out, "a") as f:
-                  f.write(f"ru_rules_dir={ru_dir}\n")
-                  f.write(f"styleguide_dir={sg_dir}\n")
-                  f.write(f"mcp_status={'ok' if mcp_ok else 'unavailable'}\n")
-          PYEOF
+gh_out = os.environ.get("GITHUB_OUTPUT", "")
+if gh_out:
+    with open(gh_out, "a") as f:
+        f.write(f"ru_rules_dir={ru_dir}\n")
+        f.write(f"styleguide_dir={sg_dir}\n")
+        f.write(f"mcp_status={'ok' if mcp_ok else 'unavailable'}\n")
+PYEOF
+          python "$RUNNER_TEMP/fetch_rules.py"
 
       # ── 5а. Python-линтер для русских файлов ──────────────────────
       - name: Lint Russian files (Python)
