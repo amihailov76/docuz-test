@@ -38,7 +38,7 @@ jobs:
       # ── 2. Python ────────────────────────────────────────────────
       - name: Install Python deps
         run: |
-          pip install -r .github/scripts/requirements.txt --quiet
+          python -m pip install -r .github/scripts/requirements.txt --quiet
 
       # ── 3. Vale ──────────────────────────────────────────────────
       - name: Install Vale
