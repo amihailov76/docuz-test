@@ -68,11 +68,38 @@ jobs:
       # ── 4. Определяем изменённые файлы ───────────────────────────
       - name: Get changed docs files
         id: changed-files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPO:         ${{ github.repository }}
         run: |
-          BASE="${{ github.base_ref || 'main' }}"
-          CHANGED=$(git diff --name-only "origin/${BASE}...HEAD" \
-            | grep -E '^docs/(ru|en)/.+\.mdx$' \
-            || true)
+          CHANGED=$(python - <<'PYEOF'
+import os, urllib.request, json, sys
+
+token  = os.environ["GITHUB_TOKEN"]
+repo   = os.environ["REPO"]
+pr_num = os.environ.get("PR_NUMBER", "")
+
+if not pr_num:
+    print("No PR number provided.", file=sys.stderr)
+    sys.exit(0)
+
+url = f"https://api.github.com/repos/{repo}/pulls/{pr_num}/files?per_page=100"
+req = urllib.request.Request(url, headers={
+    "Authorization": f"token {token}",
+    "Accept": "application/vnd.github+json"
+})
+with urllib.request.urlopen(req) as r:
+    files = json.load(r)
+
+for f in files:
+    name = f["filename"]
+    if name.startswith("docs/") and name.endswith(".mdx"):
+        parts = name.split("/")
+        if len(parts) >= 2 and parts[1] in ("ru", "en"):
+            print(name)
+PYEOF
+)
           if [ -z "$CHANGED" ]; then
             echo "No eligible docs files changed."
             echo "has_files=false" >> "$GITHUB_OUTPUT"
