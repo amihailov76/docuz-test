@@ -138,11 +138,10 @@ jobs:
             "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-pc-windows-msvc.zip" \
             -o "$RUNNER_TEMP/lychee.zip"
           unzip -o "$RUNNER_TEMP/lychee.zip" -d "$RUNNER_TEMP/lychee-bin"
-          LYCHEE_EXE=$(find "$RUNNER_TEMP/lychee-bin" -name "lychee.exe" | head -1)
-          LYCHEE_DIR=$(dirname "$LYCHEE_EXE")
+          # zip extracts into a versioned subdirectory; find the exe regardless of name
+          LYCHEE_DIR=$(ls -d "$RUNNER_TEMP/lychee-bin"/lychee-*/  2>/dev/null | head -1)
           echo "$LYCHEE_DIR" >> "$GITHUB_PATH"
-          echo "LYCHEE_BIN=$LYCHEE_DIR" >> "$GITHUB_ENV"
-          "$LYCHEE_EXE" --version
+          "$LYCHEE_DIR/lychee.exe" --version
 
       - name: Check broken links (Lychee)
         if: steps.changed-files.outputs.has_files == 'true'
