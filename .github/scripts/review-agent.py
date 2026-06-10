@@ -210,7 +210,11 @@ SYSTEM_PROMPT = (
     "- Tone: neutral, concrete. Don't say 'good' or 'bad'.\n"
     "  Say what specifically is violated and how to fix it.\n"
     "- Do not comment on: code, JSX tags, frontmatter (title/description),\n"
-    "  file names, URLs, technical terms.\n"
+    "  file names, technical terms.\n"
+    "- Linter findings may include: style violations (Russian./Vale.), broken links (Lychee.BrokenLink),\n"
+    "  and typos (Codespell.Typo). Treat all of them equally — surface the most important ones.\n"
+    "- For broken links: mention the URL and HTTP status in the comment.\n"
+    "- For typos: mention the misspelling and suggested correction.\n"
     "- Comment language: Russian for docs/ru/, English for docs/en/.\n\n"
     "Reply STRICTLY in JSON format (no markdown wrapper):\n"
     '{{\n'
