@@ -131,6 +131,50 @@ jobs:
             echo "{}" > "$RUNNER_TEMP/vale_en.json"
           fi
 
+
+      # ── 5d. Check broken links (Lychee) ──────────────────────────────
+      - name: Install Lychee
+        run: |
+          LYCHEE_VERSION="0.24.2"
+          curl -sL --max-time 120 \
+            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-pc-windows-msvc.zip" \
+            -o "$RUNNER_TEMP/lychee.zip"
+          unzip -o "$RUNNER_TEMP/lychee.zip" -d "$RUNNER_TEMP/lychee-bin"
+          "$RUNNER_TEMP/lychee-bin/lychee" --version
+
+      - name: Check broken links (Lychee)
+        if: steps.changed-files.outputs.has_files == 'true'
+        run: |
+          FILES=$(cat "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ' || true)
+          if [ -n "$FILES" ]; then
+            "$RUNNER_TEMP/lychee-bin/lychee" \
+              --format json \
+              --output "$RUNNER_TEMP/lychee_raw.json" \
+              --timeout 10 \
+              --max-retries 1 \
+              --no-progress \
+              $FILES || true
+            python .github/scripts/convert_lychee.py \
+              "$RUNNER_TEMP/lychee_raw.json" \
+              "$RUNNER_TEMP/lychee.json"
+          else
+            echo "{}" > "$RUNNER_TEMP/lychee.json"
+          fi
+
+      # ── 5e. Check typos (Codespell, EN only) ─────────────────────────
+      - name: Check typos (Codespell)
+        if: steps.changed-files.outputs.has_files == 'true'
+        run: |
+          EN_FILES=$(grep 'docs/en' "$RUNNER_TEMP/changed_files.txt" 2>/dev/null | tr '\n' ' ' || true)
+          if [ -n "$EN_FILES" ]; then
+            python .github/scripts/run_codespell.py \
+              --files $EN_FILES \
+              --output "$RUNNER_TEMP/codespell.json"
+          else
+            echo "[INFO] No EN files -- skipping Codespell."
+            echo "{}" > "$RUNNER_TEMP/codespell.json"
+          fi
+
       # ── 5c. Merge lint results ─────────────────────────────────────
       - name: Merge lint results
         if: steps.changed-files.outputs.has_files == 'true'
@@ -139,6 +183,8 @@ jobs:
           python .github/scripts/merge_lint.py \
             "$RUNNER_TEMP/vale_ru.json" \
             "$RUNNER_TEMP/vale_en.json" \
+            "$RUNNER_TEMP/lychee.json" \
+            "$RUNNER_TEMP/codespell.json" \
             > "$RUNNER_TEMP/vale_output.json"
 
           WARN_COUNT=$(python -c "import json; d=json.load(open('$RUNNER_TEMP/vale_output.json')); print(sum(len(v) for v in d.values() if isinstance(v,list)))" 2>/dev/null || echo 0)
@@ -153,10 +199,4 @@ jobs:
           LLM_MODEL:    ${{ vars.LLM_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
-          REPO:         ${{ github.repository }}
-          BASE_REF:     ${{ github.base_ref || 'main' }}
-        run: |
-          python .github/scripts/review-agent.py \
-            --changed-files "$RUNNER_TEMP/changed_files.txt" \
-            --vale-output "$RUNNER_TEMP/vale_output.json" \
-            --style-guide-dir "${{ steps.fetch-rules.outputs.styleguide_dir }}"
+          REPO:         ${{ github.repository 
