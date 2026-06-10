@@ -146,7 +146,11 @@ jobs:
       - name: Check broken links (Lychee)
         if: steps.changed-files.outputs.has_files == 'true'
         run: |
-          FILES=$(cat "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ' || true)
+          REPO_ROOT="$(pwd)"
+          # Build absolute paths; strip \r from Windows CRLF line endings
+          FILES=$(sed 's/\r//' "$RUNNER_TEMP/changed_files.txt" | \
+            while IFS= read -r f; do [ -n "$f" ] && echo "$REPO_ROOT/$f"; done | \
+            tr '\n' ' ')
           if [ -n "$FILES" ]; then
             lychee \
               --format json \
