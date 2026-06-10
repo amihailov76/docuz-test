@@ -138,14 +138,18 @@ jobs:
             "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-pc-windows-msvc.zip" \
             -o "$RUNNER_TEMP/lychee.zip"
           unzip -o "$RUNNER_TEMP/lychee.zip" -d "$RUNNER_TEMP/lychee-bin"
-          "$RUNNER_TEMP/lychee-bin/lychee" --version
+          LYCHEE_EXE=$(find "$RUNNER_TEMP/lychee-bin" -name "lychee.exe" | head -1)
+          LYCHEE_DIR=$(dirname "$LYCHEE_EXE")
+          echo "$LYCHEE_DIR" >> "$GITHUB_PATH"
+          echo "LYCHEE_BIN=$LYCHEE_DIR" >> "$GITHUB_ENV"
+          "$LYCHEE_EXE" --version
 
       - name: Check broken links (Lychee)
         if: steps.changed-files.outputs.has_files == 'true'
         run: |
           FILES=$(cat "$RUNNER_TEMP/changed_files.txt" | tr '\n' ' ' || true)
           if [ -n "$FILES" ]; then
-            "$RUNNER_TEMP/lychee-bin/lychee" \
+            lychee \
               --format json \
               --output "$RUNNER_TEMP/lychee_raw.json" \
               --timeout 10 \
@@ -197,10 +201,4 @@ jobs:
           LLM_MODEL:    ${{ vars.LLM_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
-          REPO:         ${{ github.repository }}
-          BASE_REF:     ${{ github.base_ref || 'main' }}
-        run: |
-          python .github/scripts/review-agent.py \
-            --changed-files "$RUNNER_TEMP/changed_files.txt" \
-            --vale-output "$RUNNER_TEMP/vale_output.json" \
-            --style-guide-dir "${{ steps.fetch-rules.outputs.styleguide_dir }}"
+  
