@@ -22,20 +22,20 @@ jobs:
   docs-review:
     if: github.event.label.name == 'docs-review' || github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     defaults:
       run:
         shell: bash
 
     steps:
-      # ── 1. Checkout ───────────────────────────────────────────────
+      # ── 1. Checkout ───────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── 2. Python ────────────────────────────────────────────────
+      # ── 2. Python ────────────────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -44,7 +44,7 @@ jobs:
       - name: Install Python deps
         run: python -m pip install -r .github/scripts/requirements.txt --quiet
 
-      # ── 3. Vale ──────────────────────────────────────────────────
+      # ── 3. Vale ──────────────────────────────────────────────────────
       - name: Install Vale
         run: |
           VALE_VERSION="3.14.2"
@@ -55,7 +55,7 @@ jobs:
           echo "$RUNNER_TEMP/vale-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/vale-bin/vale" --version
 
-      # ── 3a. Vale config diagnostics ──────────────────────────────
+      # ── 3a. Vale config diagnostics ──────────────────────────────────
       - name: Vale config diagnostics
         run: |
           echo "=== .vale-ru.ini ===" && \
@@ -63,7 +63,7 @@ jobs:
           echo "=== .vale-en.ini ===" && \
             "$RUNNER_TEMP/vale-bin/vale" --config="$(pwd)/.vale-en.ini" ls-config 2>&1 | head -40 || true
 
-      # ── 4. Get changed docs files ─────────────────────────────────
+      # ── 4. Get changed docs files ─────────────────────────────────────
       - name: Get changed docs files
         id: changed-files
         env:
@@ -71,7 +71,6 @@ jobs:
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
           REPO:         ${{ github.repository }}
         run: |
-          # stderr (debug output) goes to workflow log; stdout = file list
           python .github/scripts/get_changed_files.py \
             > "$RUNNER_TEMP/changed_files.txt" || true
           CHANGED=$(cat "$RUNNER_TEMP/changed_files.txt" 2>/dev/null || true)
@@ -84,7 +83,7 @@ jobs:
             echo "has_files=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── 5. Fetch rules and style guide (MCP -> local fallback) ────
+      # ── 5. Fetch rules and style guide (MCP -> local fallback) ────────
       - name: Fetch rules and style guide
         if: steps.changed-files.outputs.has_files == 'true'
         id: fetch-rules
@@ -93,7 +92,7 @@ jobs:
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
         run: python .github/scripts/fetch_rules.py
 
-      # ── 5a. Lint Russian files ────────────────────────────────────
+      # ── 5a. Lint Russian files ────────────────────────────────────────
       - name: Lint Russian files (Python)
         if: steps.changed-files.outputs.has_files == 'true'
         id: lint-ru
@@ -110,7 +109,7 @@ jobs:
             echo "{}" > "$RUNNER_TEMP/vale_ru.json"
           fi
 
-      # ── 5b. Lint English files (Vale) ─────────────────────────────
+      # ── 5b. Lint English files (Vale) ─────────────────────────────────
       - name: Lint English files (Vale)
         if: steps.changed-files.outputs.has_files == 'true'
         id: lint-en
@@ -131,8 +130,7 @@ jobs:
             echo "{}" > "$RUNNER_TEMP/vale_en.json"
           fi
 
-
-      # ── 5d. Check broken links (Lychee) ──────────────────────────────
+      # ── 5c. Check broken links (Lychee) ──────────────────────────────
       - name: Install Lychee
         run: |
           LYCHEE_VERSION="0.24.2"
@@ -161,7 +159,7 @@ jobs:
             echo "{}" > "$RUNNER_TEMP/lychee.json"
           fi
 
-      # ── 5e. Check typos (Codespell, EN only) ─────────────────────────
+      # ── 5d. Check typos (Codespell, EN only) ─────────────────────────
       - name: Check typos (Codespell)
         if: steps.changed-files.outputs.has_files == 'true'
         run: |
@@ -175,7 +173,7 @@ jobs:
             echo "{}" > "$RUNNER_TEMP/codespell.json"
           fi
 
-      # ── 5c. Merge lint results ─────────────────────────────────────
+      # ── 5e. Merge lint results ─────────────────────────────────────────
       - name: Merge lint results
         if: steps.changed-files.outputs.has_files == 'true'
         id: vale
@@ -190,7 +188,7 @@ jobs:
           WARN_COUNT=$(python -c "import json; d=json.load(open('$RUNNER_TEMP/vale_output.json')); print(sum(len(v) for v in d.values() if isinstance(v,list)))" 2>/dev/null || echo 0)
           echo "Total warnings: $WARN_COUNT"
 
-      # ── 6. LLM review agent ───────────────────────────────────────
+      # ── 6. LLM review agent ───────────────────────────────────────────
       - name: Run LLM review agent
         if: steps.changed-files.outputs.has_files == 'true'
         env:
@@ -199,4 +197,10 @@ jobs:
           LLM_MODEL:    ${{ vars.LLM_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
-          REPO:         ${{ github.repository 
+          REPO:         ${{ github.repository }}
+          BASE_REF:     ${{ github.base_ref || 'main' }}
+        run: |
+          python .github/scripts/review-agent.py \
+            --changed-files "$RUNNER_TEMP/changed_files.txt" \
+            --vale-output "$RUNNER_TEMP/vale_output.json" \
+            --style-guide-dir "${{ steps.fetch-rules.outputs.styleguide_dir }}"
