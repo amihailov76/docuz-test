@@ -200,4 +200,10 @@ jobs:
           LLM_MODEL:    ${{ vars.LLM_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
-  
+          REPO:         ${{ github.repository }}
+          BASE_REF:     ${{ github.base_ref || 'main' }}
+        run: |
+          python .github/scripts/review-agent.py \
+            --changed-files "$RUNNER_TEMP/changed_files.txt" \
+            --vale-output "$RUNNER_TEMP/vale_output.json" \
+            --style-guide-dir "${{ steps.fetch-rules.outputs.styleguide_dir }}"
