@@ -159,6 +159,8 @@ jobs:
               --max-retries 1 \
               --no-progress \
               $FILES || true
+            echo "[DEBUG] lychee_raw.json:"
+            cat "$RUNNER_TEMP/lychee_raw.json" || echo "(empty or missing)"
             python .github/scripts/convert_lychee.py \
               "$RUNNER_TEMP/lychee_raw.json" \
               "$RUNNER_TEMP/lychee.json"
