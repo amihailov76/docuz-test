@@ -18,6 +18,19 @@ const config = {
   projectName: 'docuz-test',
   trailingSlash: false,
 
+  // Pointer to llms.txt on every page (Agent-Friendly Docs spec, Track 2)
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'alternate',
+        type: 'text/plain',
+        href: 'https://amihailov76.github.io/docuz-test/llms.txt',
+        title: 'LLMs.txt',
+      },
+    },
+  ],
+
   // Предупреждать о сломанных ссылках, но не прерывать сборку —
   // удобно на этапе миграции контента.
   onBrokenLinks: 'warn',
