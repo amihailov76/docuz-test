@@ -1,0 +1,56 @@
+# Doc Reviewer
+
+> Doc Reviewer is an AI-powered tool for evaluating the quality of technical documentation instructions. It analyzes documents against configurable criteria, scores each instruction, and helps technical writers identify issues before publication. Available for Windows with support for OpenAI-compatible LLM models.
+
+## Getting Started
+
+- [Introduction](https://amihailov76.github.io/docuz-test/docs/en/introduction): Overview of Doc Reviewer and how it evaluates instruction quality
+- [Installation](https://amihailov76.github.io/docuz-test/docs/en/installation): Install Doc Reviewer on Windows and confirm it runs correctly
+- [Quickstart](https://amihailov76.github.io/docuz-test/docs/en/quickstart): Run your first evaluation in under five minutes
+- [Choose a configuration](https://amihailov76.github.io/docuz-test/docs/en/choose-configuration): How to select the right MaxPatrol SIEM configuration for your environment
+
+## Concepts
+
+- [Projects](https://amihailov76.github.io/docuz-test/docs/en/concepts/projects): Group documents that share the same product context
+- [Documents](https://amihailov76.github.io/docuz-test/docs/en/concepts/documents): How Doc Reviewer parses and classifies uploaded content
+- [Criteria](https://amihailov76.github.io/docuz-test/docs/en/concepts/criteria): Quality rules that define what a good instruction looks like
+- [Evaluation](https://amihailov76.github.io/docuz-test/docs/en/concepts/evaluation): How Doc Reviewer scores each instruction against the active criteria set
+
+## Configuration
+
+- [Connect an LLM model](https://amihailov76.github.io/docuz-test/docs/en/configuration/llm-models): Configure an OpenAI-compatible endpoint for running evaluations
+- [Criteria sets](https://amihailov76.github.io/docuz-test/docs/en/configuration/criteria-sets): Create named sets of criteria and switch between them per project
+- [Custom criteria](https://amihailov76.github.io/docuz-test/docs/en/configuration/custom-criteria): Write your own evaluation rules using the criteria definition format
+
+## Workflows
+
+- [Upload a document](https://amihailov76.github.io/docuz-test/docs/en/workflows/upload-document): Load a file and inspect the instructions Doc Reviewer detects
+- [Evaluate a web page](https://amihailov76.github.io/docuz-test/docs/en/workflows/evaluate-web-page): Fetch and evaluate a documentation page directly by URL
+- [Review results](https://amihailov76.github.io/docuz-test/docs/en/workflows/review-results): Browse evaluation output, filter by score, and manage false positives
+- [Snapshots](https://amihailov76.github.io/docuz-test/docs/en/workflows/snapshots): Save evaluation state and compare quality across versions
+- [Export to Excel](https://amihailov76.github.io/docuz-test/docs/en/workflows/export): Export evaluation results for sharing or offline analysis
+
+## Troubleshooting
+
+- [FAQ](https://amihailov76.github.io/docuz-test/docs/en/troubleshooting/faq): Answers to common questions about setup and usage
+- [Known limitations](https://amihailov76.github.io/docuz-test/docs/en/troubleshooting/known-limitations): Current constraints and behaviours to be aware of
+
+## Russian language documentation (RU)
+
+- [Введение](https://amihailov76.github.io/docuz-test/docs/ru/introduction): Обзор Doc Reviewer и принцип оценки качества инструкций
+- [Установка](https://amihailov76.github.io/docuz-test/docs/ru/installation): Установка Doc Reviewer на Windows
+- [Быстрый старт](https://amihailov76.github.io/docuz-test/docs/ru/quickstart): Первая оценка качества документации за пять минут
+- [Проекты](https://amihailov76.github.io/docuz-test/docs/ru/concepts/projects): Группировка документов с общим продуктовым контекстом
+- [Документы](https://amihailov76.github.io/docuz-test/docs/ru/concepts/documents): Разбор и классификация загруженного контента
+- [Критерии](https://amihailov76.github.io/docuz-test/docs/ru/concepts/criteria): Правила оценки качества инструкций
+- [Оценка](https://amihailov76.github.io/docuz-test/docs/ru/concepts/evaluation): Алгоритм оценки каждой инструкции
+- [Подключение LLM-модели](https://amihailov76.github.io/docuz-test/docs/ru/configuration/llm-models): Настройка OpenAI-совместимого эндпоинта
+- [Наборы критериев](https://amihailov76.github.io/docuz-test/docs/ru/configuration/criteria-sets): Создание именованных наборов критериев и переключение между ними
+- [Пользовательские критерии](https://amihailov76.github.io/docuz-test/docs/ru/configuration/custom-criteria): Написание собственных правил оценки
+- [Загрузка документа](https://amihailov76.github.io/docuz-test/docs/ru/workflows/upload-document): Загрузка файла и просмотр обнаруженных инструкций
+- [Оценка веб-страницы](https://amihailov76.github.io/docuz-test/docs/ru/workflows/evaluate-web-page): Загрузка и оценка страницы документации по URL
+- [Просмотр результатов](https://amihailov76.github.io/docuz-test/docs/ru/workflows/review-results): Анализ результатов и управление ложными срабатываниями
+- [Снимки](https://amihailov76.github.io/docuz-test/docs/ru/workflows/snapshots): Сохранение снимков оценки и сравнение качества
+- [Экспорт](https://amihailov76.github.io/docuz-test/docs/ru/workflows/export): Экспорт результатов в Excel
+- [FAQ](https://amihailov76.github.io/docuz-test/docs/ru/troubleshooting/faq): Ответы на частые вопросы
+- [Известные ограничения](https://amihailov76.github.io/docuz-test/docs/ru/troubleshooting/known-limitations): Текущие ограничения и особенности поведения
