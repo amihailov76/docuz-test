@@ -40,7 +40,6 @@
 - [Введение](https://amihailov76.github.io/docuz-test/docs/ru/introduction): Обзор Doc Reviewer и принцип оценки качества инструкций
 - [Установка](https://amihailov76.github.io/docuz-test/docs/ru/installation): Установка Doc Reviewer на Windows
 - [Быстрый старт](https://amihailov76.github.io/docuz-test/docs/ru/quickstart): Первая оценка качества документации за пять минут
-- [Выбор конфигурации](https://amihailov76.github.io/docuz-test/docs/ru/choose-configuration): Как выбрать подходящую конфигурацию для вашего окружения
 - [Проекты](https://amihailov76.github.io/docuz-test/docs/ru/concepts/projects): Группировка документов с общим продуктовым контекстом
 - [Документы](https://amihailov76.github.io/docuz-test/docs/ru/concepts/documents): Разбор и классификация загруженного контента
 - [Критерии](https://amihailov76.github.io/docuz-test/docs/ru/concepts/criteria): Правила оценки качества инструкций
