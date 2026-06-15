@@ -88,7 +88,7 @@ jobs:
         if: steps.changed-files.outputs.has_files == 'true'
         id: fetch-rules
         env:
-          MCP_SERVER_URL: ${{ vars.MCP_SERVER_URL }}
+          MCP_SERVER_URL: ${{ secrets.MCP_SERVER_URL }}
           MCP_API_KEY:    ${{ secrets.MCP_API_KEY }}
         run: python .github/scripts/fetch_rules.py
 
@@ -200,8 +200,8 @@ jobs:
         if: steps.changed-files.outputs.has_files == 'true'
         env:
           LLM_API_KEY:  ${{ secrets.LLM_API_KEY }}
-          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
-          LLM_MODEL:    ${{ vars.LLM_MODEL }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL:    ${{ secrets.LLM_MODEL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER:    ${{ github.event.pull_request.number || inputs.pr_number }}
           REPO:         ${{ github.repository }}
